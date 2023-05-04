@@ -113,158 +113,6 @@
       </tags>
   </entry>
   <entry>
-    <title>Hive+Hbase 的部署及使用</title>
-    <url>/2023/04/24/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8/</url>
-    <content><![CDATA[<p>HBase 和 Hive 是 Hadoop 生态系统中常用的两个组件。HBase 是一个分布式的非关系型数据库，可以用来存储大量的结构化数据；Hive 是一个基于 Hadoop 的数据仓库工具，可以将结构化数据映射为一张数据库表，并提供类似 SQL 的查询语言。</p>
-<h4 id="下载-HBase-和-Hive"><a href="#下载-HBase-和-Hive" class="headerlink" title="下载 HBase 和 Hive"></a>下载 HBase 和 Hive</h4><p>注意<code>Hadoop</code> 与 <code>Hbase</code> 和 <code>Hive</code> 的版本匹配问题，不然到后面会有意外惊喜，我的<code>Hadoop</code>是 3.3.4，如果和我一样后面直接复制我的命令即可，不一样你需要去搜一下你版本对应的<code>Hbase</code> 和<code>Hive</code></p>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/version_hbase.png"
-                      alt="version_hbase"
-                ><br><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/version_hive.png"
-                      alt="version_hive"
-                ></p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash"><span class="built_in">cd</span> /usr/local</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 下载</span></span></span><br><span class="line">wget https://mirrors.aliyun.com/apache/hbase/2.5.3/hbase-2.5.3-bin.tar.gz</span><br><span class="line">wget https://mirrors.aliyun.com/apache/hive/hive-3.1.2/apache-hive-3.1.2-bin.tar.gz</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 解压</span></span></span><br><span class="line">tar -zxvf hbase-2.5.3-bin.tar.gz</span><br><span class="line">tar -zxvf apache-hive-3.1.2-bin.tar.gz</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 改一下名字，并将 hive 移动到Hadoop目录下</span></span></span><br><span class="line">mv apache-hive-3.1.2-bin hadoop/hive</span><br><span class="line">mv hbase-2.5.3 hbase</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 修改权限</span></span></span><br><span class="line">sudo chmod -R 777 hbase hadoop/hive</span><br></pre></td></tr></table></figure></div>
-
-<h4 id="配置-HBase"><a href="#配置-HBase" class="headerlink" title="配置 HBase"></a>配置 HBase</h4><p>配置环境变量（顺便把 Hive 的也配置了）</p>
-<p><code>$ vi ~/.bashrc</code></p>
-<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line">## HBASE_HOME</span><br><span class="line">export HBASE_HOME=/usr/local/hbase</span><br><span class="line">export PATH=$PATH:$HBASE_HOME/bin</span><br><span class="line"></span><br><span class="line">## Hive_HOME</span><br><span class="line">export HIVE_HOME=/usr/local/hadoop/hive</span><br><span class="line">export CLASSPATH=.:$&#123;HIVE_HOME&#125;/lib:$CLASSPATH</span><br><span class="line">export PATH=$&#123;HIVE_HOME&#125;/bin:$&#123;HIVE_HOME&#125;/conf:$PATH</span><br></pre></td></tr></table></figure></div>
-
-<p>生效</p>
-<p><code>$ source ~/.bashrc</code></p>
-<blockquote>
-<p>Hadoop 和 HBase 之间需要进行配置，以便 HBase 可以使用 Hadoop 作为其底层存储和计算引擎</p>
-</blockquote>
-<ul>
-<li><p>将 Hadoop 的 core-site.xml 和 hdfs-site.xml 配置文件复制到 HBase 的 conf 目录下：</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">cp $HADOOP_HOME/etc/hadoop/core-site.xml $HBASE_HOME/conf/</span><br><span class="line">cp $HADOOP_HOME/etc/hadoop/hdfs-site.xml $HBASE_HOME/conf/</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>编辑 HBase 的 hbase-site.xml 文件：</p>
-<p><code>vi /usr/local/hbase/conf/hbase-site.xml</code></p>
-<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line">	<span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hbase.rootdir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>hdfs://localhost:9000/hbase<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hbase.zookeeper.quorum<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>localhost<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hbase.cluster.distributed<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>true<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">        <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hbase.tmp.dir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>./tmp<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hbase.unsafe.stream.capability.enforce<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>false<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div></li>
-</ul>
-<h5 id="验证是否启动"><a href="#验证是否启动" class="headerlink" title="验证是否启动"></a>验证是否启动</h5><ul>
-<li><p>启动 Hadoop</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">su hadoop</span><br><span class="line"></span><br><span class="line">sudo service ssh start</span><br><span class="line"></span><br><span class="line">ssh localhost</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 启动 Hadoop</span></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">start-all.sh</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 启动 HBase</span></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">start-hbase.sh</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 查看一下</span></span></span><br><span class="line">jps</span><br></pre></td></tr></table></figure></div>
-
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230420193259179.png"
-                      alt="image-20230420193259179"
-                ></p>
-<p>浏览器访问 Web UI <code>localhost: 16010</code></p>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230420193400869.png"
-                      alt="image-20230420193400869"
-                ></p>
-<p>则启动成功</p>
-</li>
-</ul>
-<h4 id="配置-Hive"><a href="#配置-Hive" class="headerlink" title="配置 Hive"></a>配置 Hive</h4><p>在将 Hive 与 HBase 集成时需要使用 MySQL 作为元数据存储。Hive 元数据存储在 RDBMS 中，因此需要一个关系型数据库来存储表和列等元数据信息。</p>
-<h5 id="配置-mysql（安装好的跳过）"><a href="#配置-mysql（安装好的跳过）" class="headerlink" title="配置 mysql（安装好的跳过）"></a>配置 mysql（安装好的跳过）</h5><ul>
-<li><p>安装 mysql 客户端和服务端</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">sudo apt-get install mysql-server mysql-client</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>设置密码</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">sudo mysql_secure_installation</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>登录</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">sudo mysql -u root -p</span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 显示如下则成功</span></span></span><br><span class="line"></span><br><span class="line">exit</span><br></pre></td></tr></table></figure></div>
-
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230424102437018.png"
-                      alt="image-20230424102437018"
-                ></p>
-</li>
-</ul>
-<h5 id="配置-Hive-1"><a href="#配置-Hive-1" class="headerlink" title="配置 Hive"></a>配置 Hive</h5><ul>
-<li><p>在 Hadoop 集群中创建一个 Hive 元数据存储目录：</p>
-<div class="highlight-container" data-rel="Plaintext"><figure class="iseeu highlight plaintext"><table><tr><td class="code"><pre><span class="line">$ hdfs dfs -mkdir /hive</span><br><span class="line">$ hdfs dfs -mkdir /hive/metastore</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>进入 Hive 的 conf 目录</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">cd /usr/local/hadoop/hive</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 将 hive-env.sh.template 复制一份并命名为 hive-env.sh</span></span></span><br><span class="line">cp hive-env.sh.template hive-env.sh</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 编辑hive-env.sh</span></span></span><br><span class="line">vi hive-env.sh</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 加上下面配置</span></span></span><br><span class="line">HADOOP_HOME=/usr/local/hadoop</span><br><span class="line">export HIVE_CONF_DIR=/usr/local/hadoop/hive/conf</span><br><span class="line">export HIVE_AUX_JARS_PATH=/usr/local/hadoop/hive/lib</span><br></pre></td></tr></table></figure></div>
-
-<ul>
-<li><p>创建一个 hive-site.xml 文件并加上下面配置（<code>vi hive-site.xml</code>）</p>
-<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>javax.jdo.option.ConnectionURL<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>jdbc:mysql://localhost:3306/metastore?createDatabaseIfNotExist=true<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>javax.jdo.option.ConnectionDriverName<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>com.mysql.cj.jdbc.Driver<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>javax.jdo.option.ConnectionUserName<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>hive<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>javax.jdo.option.ConnectionPassword<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>hive<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hive.metastore.warehouse.dir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>/user/hive/warehouse<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hive.exec.local.scratchdir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>/usr/local/hadoop/hive/tmp<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>hive 下创建一个 <code>warehouse</code> 和 <code>logs</code>文件夹</p>
-<div class="highlight-container" data-rel="Plaintext"><figure class="iseeu highlight plaintext"><table><tr><td class="code"><pre><span class="line">/hive$  mkdir /usr/local/hadoop/hive/warehouse</span><br><span class="line">/hive$  mkdir -p logs</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>hive&#x2F;conf 对 hive-log4j2.properties 配置</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">/hive$ </span><span class="language-bash"> <span class="built_in">cd</span> conf</span></span><br><span class="line"><span class="meta prompt_">/conf$ </span><span class="language-bash"> <span class="built_in">mv</span> hive-log4j2.properties.template hive-log4j2.properties</span></span><br><span class="line"><span class="meta prompt_">/conf$ </span><span class="language-bash"> sudo vi hive-log4j2.properties</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 将第 24 行左右修改（vim 可以直接 :24 跳转到24行）</span></span></span><br><span class="line"></span><br><span class="line">property.hive.log.dir = /usr/local/hadoop/hive/logs</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>进入 hive&#x2F;lib 下面下载 <code>mysql-connector-java</code>的 jar 包，可使用下面命令</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">wget https://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-java-8.0.27.tar.gz</span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 解压</span></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 将jar 包移动到 hive/lib 目录下，此处省略</span></span></span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>初始化 metastore 数据库：</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">schematool -initSchema -dbType mysql -verbose</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>启动 metastore 服务</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">hive --service metastore</span><br></pre></td></tr></table></figure></div></li>
-</ul>
-</li>
-<li><p>另开一个终端</p>
-<ul>
-<li><p>启动 hive</p>
-<p><code>$ hive</code></p>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230424120736490.png"
-                      alt="image-20230424120736490"
-                ></p>
-</li>
-<li><p>创建一个测试表进行测试</p>
-<div class="highlight-container" data-rel="Sql"><figure class="iseeu highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="keyword">CREATE</span> <span class="keyword">TABLE</span> test (id <span class="type">INT</span>, name STRING);</span><br><span class="line"><span class="keyword">INSERT</span> <span class="keyword">INTO</span> test <span class="keyword">VALUES</span> (<span class="number">1</span>, <span class="string">&#x27;test1&#x27;</span>), (<span class="number">2</span>, <span class="string">&#x27;test2&#x27;</span>), (<span class="number">3</span>, <span class="string">&#x27;test3&#x27;</span>);</span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> test;</span><br></pre></td></tr></table></figure></div>
-
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230424152756644.png"
-                      alt="image-20230424152756644"
-                ></p>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230424152814130.png"
-                      alt="image-20230424152814130"
-                ><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230424152823200.png"
-                      alt="image-20230424152823200"
-                ></p>
-</li>
-<li><p>退出</p>
-<p>&gt; <code>exit</code></p>
-</li>
-<li><p>关闭服务</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">stop-hbase.sh</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">stop-all.sh</span></span><br></pre></td></tr></table></figure></div></li>
-</ul>
-</li>
-</ul>
-<h6 id="至此，Hbase-Hive-配置完成"><a href="#至此，Hbase-Hive-配置完成" class="headerlink" title="至此，Hbase+Hive 配置完成"></a>至此，Hbase+Hive 配置完成</h6>]]></content>
-      <categories>
-        <category>笔记</category>
-        <category>Linux</category>
-        <category>Hadoop</category>
-      </categories>
-      <tags>
-        <tag>hadoop</tag>
-        <tag>linux</tag>
-      </tags>
-  </entry>
-  <entry>
     <title>MapReduce 基础操作</title>
     <url>/2023/04/20/MapReduce%E5%AE%89%E8%A3%85%E5%92%8C%E9%85%8D%E7%BD%AE/</url>
     <content><![CDATA[<h6 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h6><p><code>MapReduce</code>是一种分布式计算框架，用于处理大规模数据集的计算问题。它是由 Google 公司开发的，旨在简化并行计算的开发。</p>
@@ -365,6 +213,163 @@
       </tags>
   </entry>
   <entry>
+    <title>Hive+Hbase 的部署及使用</title>
+    <url>/2023/04/24/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8/</url>
+    <content><![CDATA[<p>HBase 和 Hive 是 Hadoop 生态系统中常用的两个组件。HBase 是一个分布式的非关系型数据库，可以用来存储大量的结构化数据；Hive 是一个基于 Hadoop 的数据仓库工具，可以将结构化数据映射为一张数据库表，并提供类似 SQL 的查询语言。</p>
+<h4 id="下载-HBase-和-Hive"><a href="#下载-HBase-和-Hive" class="headerlink" title="下载 HBase 和 Hive"></a>下载 HBase 和 Hive</h4><p>注意<code>Hadoop</code> 与 <code>Hbase</code> 和 <code>Hive</code> 的版本匹配问题，不然到后面会有意外惊喜，我的<code>Hadoop</code>是 3.3.4，如果和我一样后面直接复制我的命令即可，不一样你需要去搜一下你版本对应的<code>Hbase</code> 和<code>Hive</code></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/version_hbase.png"
+                      alt="version_hbase"
+                ><br><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/version_hive.png"
+                      alt="version_hive"
+                ></p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash"><span class="built_in">cd</span> /usr/local</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 下载</span></span></span><br><span class="line">wget https://mirrors.aliyun.com/apache/hbase/2.5.3/hbase-2.5.3-bin.tar.gz</span><br><span class="line">wget https://mirrors.aliyun.com/apache/hive/hive-3.1.2/apache-hive-3.1.2-bin.tar.gz</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 解压</span></span></span><br><span class="line">tar -zxvf hbase-2.5.3-bin.tar.gz</span><br><span class="line">tar -zxvf apache-hive-3.1.2-bin.tar.gz</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 改一下名字，并将 hive 移动到Hadoop目录下</span></span></span><br><span class="line">mv apache-hive-3.1.2-bin hadoop/hive</span><br><span class="line">mv hbase-2.5.3 hbase</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 修改权限</span></span></span><br><span class="line">sudo chmod -R 777 hbase hadoop/hive</span><br></pre></td></tr></table></figure></div>
+
+<h4 id="配置-HBase"><a href="#配置-HBase" class="headerlink" title="配置 HBase"></a>配置 HBase</h4><p>配置环境变量（顺便把 Hive 的也配置了）</p>
+<p><code>$ vi ~/.bashrc</code></p>
+<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line">## HBASE_HOME</span><br><span class="line">export HBASE_HOME=/usr/local/hbase</span><br><span class="line">export PATH=$PATH:$HBASE_HOME/bin</span><br><span class="line"></span><br><span class="line">## Hive_HOME</span><br><span class="line">export HIVE_HOME=/usr/local/hadoop/hive</span><br><span class="line">export CLASSPATH=.:$&#123;HIVE_HOME&#125;/lib:$CLASSPATH</span><br><span class="line">export PATH=$&#123;HIVE_HOME&#125;/bin:$&#123;HIVE_HOME&#125;/conf:$PATH</span><br></pre></td></tr></table></figure></div>
+
+<p>生效</p>
+<p><code>$ source ~/.bashrc</code></p>
+<blockquote>
+<p>Hadoop 和 HBase 之间需要进行配置，以便 HBase 可以使用 Hadoop 作为其底层存储和计算引擎</p>
+</blockquote>
+<ul>
+<li><p>将 Hadoop 的 core-site.xml 和 hdfs-site.xml 配置文件复制到 HBase 的 conf 目录下：</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">cp $HADOOP_HOME/etc/hadoop/core-site.xml $HBASE_HOME/conf/</span><br><span class="line">cp $HADOOP_HOME/etc/hadoop/hdfs-site.xml $HBASE_HOME/conf/</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>编辑 HBase 的 hbase-site.xml 文件：</p>
+<p><code>vi /usr/local/hbase/conf/hbase-site.xml</code></p>
+<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line">	<span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hbase.rootdir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>hdfs://localhost:9000/hbase<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hbase.zookeeper.quorum<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>localhost<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hbase.cluster.distributed<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>true<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">        <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hbase.tmp.dir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>./tmp<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hbase.unsafe.stream.capability.enforce<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>false<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div></li>
+</ul>
+<h5 id="验证是否启动"><a href="#验证是否启动" class="headerlink" title="验证是否启动"></a>验证是否启动</h5><ul>
+<li><p>启动 Hadoop</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">su hadoop</span><br><span class="line"></span><br><span class="line">sudo service ssh start</span><br><span class="line"></span><br><span class="line">ssh localhost</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 启动 Hadoop</span></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">start-all.sh</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 启动 HBase</span></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">start-hbase.sh</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 查看一下</span></span></span><br><span class="line">jps</span><br></pre></td></tr></table></figure></div>
+
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230420193259179.png"
+                      alt="image-20230420193259179"
+                ></p>
+<p>浏览器访问 Web UI <code>localhost: 16010</code></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230420193400869.png"
+                      alt="image-20230420193400869"
+                ></p>
+<p>则启动成功</p>
+</li>
+</ul>
+<h4 id="配置-Hive"><a href="#配置-Hive" class="headerlink" title="配置 Hive"></a>配置 Hive</h4><p>在将 Hive 与 HBase 集成时需要使用 MySQL 作为元数据存储。Hive 元数据存储在 RDBMS 中，因此需要一个关系型数据库来存储表和列等元数据信息。</p>
+<h5 id="配置-mysql（安装好的跳过）"><a href="#配置-mysql（安装好的跳过）" class="headerlink" title="配置 mysql（安装好的跳过）"></a>配置 mysql（安装好的跳过）</h5><ul>
+<li><p>安装 mysql 客户端和服务端</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">sudo apt-get install mysql-server mysql-client</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>设置密码</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">sudo mysql_secure_installation</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>登录</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">sudo mysql -u root -p</span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 显示如下则成功</span></span></span><br><span class="line"></span><br><span class="line">exit</span><br></pre></td></tr></table></figure></div>
+
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230424102437018.png"
+                      alt="image-20230424102437018"
+                ></p>
+</li>
+</ul>
+<h5 id="配置-Hive-1"><a href="#配置-Hive-1" class="headerlink" title="配置 Hive"></a>配置 Hive</h5><ul>
+<li><p>在 Hadoop 集群中创建一个 Hive 元数据存储目录：</p>
+<div class="highlight-container" data-rel="Plaintext"><figure class="iseeu highlight plaintext"><table><tr><td class="code"><pre><span class="line">$ hdfs dfs -mkdir /hive</span><br><span class="line">$ hdfs dfs -mkdir /hive/metastore</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>进入 Hive 的 conf 目录</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">cd /usr/local/hadoop/hive</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 将 hive-env.sh.template 复制一份并命名为 hive-env.sh</span></span></span><br><span class="line">cp hive-env.sh.template hive-env.sh</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 编辑hive-env.sh</span></span></span><br><span class="line">vi hive-env.sh</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 加上下面配置</span></span></span><br><span class="line">HADOOP_HOME=/usr/local/hadoop</span><br><span class="line">export HIVE_CONF_DIR=/usr/local/hadoop/hive/conf</span><br><span class="line">export HIVE_AUX_JARS_PATH=/usr/local/hadoop/hive/lib</span><br></pre></td></tr></table></figure></div>
+
+<ul>
+<li>创建一个 hive-site.xml 文件并加上下面配置（<code>vi hive-site.xml</code>）</li>
+</ul>
+<blockquote>
+<p>注意：MySQL5 用的驱动 url 是<code>com.mysql.jdbc.Driver</code>，MySQL6 以后用的是<code>com.mysql.cj.jdbc.Driver</code>。版本不匹配便会报驱动类已过时的错误，所以对应第二个 <code>property</code> 配置应匹配 MySQL 版本</p>
+</blockquote>
+<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>javax.jdo.option.ConnectionURL<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>jdbc:mysql://localhost:3306/metastore?createDatabaseIfNotExist=true<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>javax.jdo.option.ConnectionDriverName<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>com.mysql.cj.jdbc.Driver<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>javax.jdo.option.ConnectionUserName<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>hive<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>javax.jdo.option.ConnectionPassword<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>hive<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hive.metastore.warehouse.dir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>/user/hive/warehouse<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>hive.exec.local.scratchdir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>/usr/local/hadoop/hive/tmp<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
+
+<ul>
+<li><p>hive 下创建一个 <code>warehouse</code> 和 <code>logs</code>文件夹</p>
+<div class="highlight-container" data-rel="Plaintext"><figure class="iseeu highlight plaintext"><table><tr><td class="code"><pre><span class="line">/hive$  mkdir /usr/local/hadoop/hive/warehouse</span><br><span class="line">/hive$  mkdir -p logs</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>hive&#x2F;conf 对 hive-log4j2.properties 配置</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">/hive$ </span><span class="language-bash"> <span class="built_in">cd</span> conf</span></span><br><span class="line"><span class="meta prompt_">/conf$ </span><span class="language-bash"> <span class="built_in">mv</span> hive-log4j2.properties.template hive-log4j2.properties</span></span><br><span class="line"><span class="meta prompt_">/conf$ </span><span class="language-bash"> sudo vi hive-log4j2.properties</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 将第 24 行左右修改（vim 可以直接 :24 跳转到24行）</span></span></span><br><span class="line"></span><br><span class="line">property.hive.log.dir = /usr/local/hadoop/hive/logs</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>进入 hive&#x2F;lib 下面下载 <code>mysql-connector-java</code>的 jar 包，可使用下面命令</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">wget https://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-java-8.0.27.tar.gz</span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 解压</span></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 将jar 包移动到 hive/lib 目录下，此处省略</span></span></span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>初始化 metastore 数据库：</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">schematool -initSchema -dbType mysql -verbose</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>启动 metastore 服务</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">hive --service metastore</span><br></pre></td></tr></table></figure></div></li>
+</ul>
+</li>
+<li><p>另开一个终端</p>
+<ul>
+<li><p>启动 hive</p>
+<p><code>$ hive</code></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230424120736490.png"
+                      alt="image-20230424120736490"
+                ></p>
+</li>
+<li><p>创建一个测试表进行测试</p>
+<div class="highlight-container" data-rel="Sql"><figure class="iseeu highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="keyword">CREATE</span> <span class="keyword">TABLE</span> test (id <span class="type">INT</span>, name STRING);</span><br><span class="line"><span class="keyword">INSERT</span> <span class="keyword">INTO</span> test <span class="keyword">VALUES</span> (<span class="number">1</span>, <span class="string">&#x27;test1&#x27;</span>), (<span class="number">2</span>, <span class="string">&#x27;test2&#x27;</span>), (<span class="number">3</span>, <span class="string">&#x27;test3&#x27;</span>);</span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> test;</span><br></pre></td></tr></table></figure></div>
+
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230424152756644.png"
+                      alt="image-20230424152756644"
+                ></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230424152814130.png"
+                      alt="image-20230424152814130"
+                ><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8.assets/image-20230424152823200.png"
+                      alt="image-20230424152823200"
+                ></p>
+</li>
+<li><p>退出</p>
+<p>&gt; <code>exit</code></p>
+</li>
+<li><p>关闭服务</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">stop-hbase.sh</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">stop-all.sh</span></span><br></pre></td></tr></table></figure></div></li>
+</ul>
+</li>
+</ul>
+<h6 id="至此，Hbase-Hive-配置完成"><a href="#至此，Hbase-Hive-配置完成" class="headerlink" title="至此，Hbase+Hive 配置完成"></a>至此，Hbase+Hive 配置完成</h6>]]></content>
+      <categories>
+        <category>笔记</category>
+        <category>Linux</category>
+        <category>Hadoop</category>
+      </categories>
+      <tags>
+        <tag>hadoop</tag>
+        <tag>linux</tag>
+      </tags>
+  </entry>
+  <entry>
     <title>HDFS 文件读写</title>
     <url>/2023/04/15/HDFS%20%E6%96%87%E4%BB%B6%E8%AF%BB%E5%86%99/</url>
     <content><![CDATA[<h4 id="启动-HDFS"><a href="#启动-HDFS" class="headerlink" title="启动 HDFS"></a>启动 HDFS</h4><ul>
@@ -447,129 +452,6 @@
                      src="/images/loading.svg"
                      data-src="/../my_imgs/hdfs5.png"
                       alt="hdfs5"
-                ></p>
-]]></content>
-      <categories>
-        <category>笔记</category>
-        <category>Linux</category>
-        <category>Hadoop</category>
-      </categories>
-      <tags>
-        <tag>hadoop</tag>
-        <tag>linux</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>Ubuntu 单机配置 Hadoop 环境</title>
-    <url>/2023/04/16/Ubuntu%20%E5%8D%95%E6%9C%BA%E9%85%8D%E7%BD%AE%20Hadoop/</url>
-    <content><![CDATA[<ul>
-<li><p>创建<code>Hadoop</code>用户</p>
-<p><code> sudo useradd -m hadoop -s /bin/bash</code></p>
-</li>
-<li><p>设置<code>Hadoop</code>密码</p>
-<p><code>sudo passwd hadoop</code></p>
-</li>
-<li><p>为<code>Hadoop</code>用户增加管理员权限</p>
-<p><code>sudo adduser hadoop sudo</code></p>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../my_imgs/hadoop1.png"
-                      alt="hadoop1"
-                ></p>
-</li>
-<li><h3 id="安装配置SSH"><a href="#安装配置SSH" class="headerlink" title="安装配置SSH"></a>安装配置<code>SSH</code></h3><div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get install ssh</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">su hadoop</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">ssh-keygen -t rsa -P <span class="string">&quot;&quot;</span></span></span><br><span class="line"></span><br><span class="line">cat ~/.ssh/id_rsa.pub &gt;&gt; ~/.ssh/authorized_keys</span><br></pre></td></tr></table></figure></div>
-
-<p>接下来运行 ssh 命令,测试一下是否成功.</p>
-<p><code>$ ssh localhost</code></p>
-</li>
-<li><h3 id="配置java环境"><a href="#配置java环境" class="headerlink" title="配置java环境"></a>配置<code>java</code>环境</h3></li>
-</ul>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get update</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get install default-jdk</span></span><br></pre></td></tr></table></figure></div>
-
-<ul>
-<li><h3 id="安装hadoop"><a href="#安装hadoop" class="headerlink" title="安装hadoop"></a>安装<code>hadoop</code></h3><ul>
-<li>下载 hadoop</li>
-</ul>
-<p>清华镜像源：<a class="link"   href="https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/" >https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/ <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></p>
-<p><code>wget https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/hadoop-3.3.4/hadoop-3.3.4.tar.gz </code></p>
-<ul>
-<li><p>配置环境变量</p>
-<p>将<code>Hadoop</code>文件解压并移动到 <code>/usr/local/hadoop</code> 文件夹下</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">tar -zxvf hadoop-3.3.4.tar.gz</span><br><span class="line">sudo mv hadoop-3.3.4 /usr/local/hadoop</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>在<code>terminal</code>中输入 <code>sudo vi ~/.bashrc</code> ，按 <strong>i</strong> 进入编辑模式：</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">export HADOOP_HOME=/usr/local/hadoop</span><br><span class="line">export HADOOP_INSTALL=$HADOOP_HOME</span><br><span class="line">export HADOOP_MAPRED_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_COMMON_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_HDFS_HOME=$HADOOP_HOME</span><br><span class="line">export YARN_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_COMMON_LIB_NATIVE_DIR=$HADOOP_HOME/lib/native</span><br><span class="line">export PATH=$PATH:$HADOOP_HOME/sbin:$HADOOP_HOME/bin</span><br><span class="line">export HADOOP_OPTS=&quot;-Djava.library.path=$HADOOP_HOME/lib/native&quot;</span><br></pre></td></tr></table></figure></div></li>
-</ul>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../my_imgs/hadoop2.png"
-                      alt="hadoop2"
-                ></p>
-</li>
-<li><h3 id="修改Hadoop配置文件"><a href="#修改Hadoop配置文件" class="headerlink" title="修改Hadoop配置文件"></a>修改<code>Hadoop</code>配置文件</h3><p>打开 <code>/usr/local/hadoop/etc/hadoop/</code> 文件夹：</p>
-<ul>
-<li><p>配置 <code>hadoop-env.sh</code> 文件</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">显式声明java路径</span></span><br><span class="line">export JAVA_HOME=/usr/lib/jvm/java</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>配置<code>~/.bashrc</code></p>
-<div class="highlight-container" data-rel="Js"><figure class="iseeu highlight js"><table><tr><td class="code"><pre><span class="line">#<span class="variable constant_">HADOOP</span> <span class="variable constant_">VARIABLES</span> <span class="variable constant_">START</span></span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">JAVA_HOME</span>=<span class="regexp">/usr/</span>lib/jvm/java</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_INSTALL</span>=<span class="regexp">/usr/</span>local/hadoop</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">PATH</span>=<span class="attr">$PATH</span>:$HADOOP_INSTALL/bin</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">PATH</span>=<span class="attr">$PATH</span>:$HADOOP_INSTALL/sbin</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_MAPRED_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_COMMON_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_HDFS_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">YARN_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_COMMON_LIB_NATIVE_DIR</span>=$HADOOP_INSTALL/lib/native</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_OPTS</span>=<span class="string">&quot;-Djava.library.path=$HADOOP_INSTALL/lib/native&quot;</span></span><br><span class="line">#<span class="variable constant_">HADOOP</span> <span class="variable constant_">VARIABLES</span> <span class="variable constant_">END</span></span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>配置 <code>core-site.xml</code> 文件</p>
-<p>在修改这个文件之前，我们需要使用超级用户创建一个目录，并给予<code>hadoop</code>该目录的权限：</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /app/hadoop/tmp</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">chown</span> hadoop:hadoop /app/hadoop/tmp</span></span><br></pre></td></tr></table></figure></div>
-
-<p>接下来切换回<code>hadoop</code>用户，修改配置文件，文件路径：<code>/usr/local/hadoop/etc/hadoop/core-site.xml</code>，使用 VI，将配置改为：</p>
-<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>hadoop.tmp.dir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>/app/hadoop/tmp<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>A base for other temporary directories.<span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>fs.default.name<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>hdfs://localhost:54310<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>The name of the default file system.  A URI whose</span><br><span class="line">  scheme and authority determine the FileSystem implementation.  The</span><br><span class="line">  uri&#x27;s scheme determines the config property (fs.SCHEME.impl) naming</span><br><span class="line">  the FileSystem implementation class.  The uri&#x27;s authority is used to</span><br><span class="line">  determine the host, port, etc. for a filesystem.<span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>修改<code>mapred-site.xml</code></p>
-<p><code>vi  /usr/local/hadoop/etc/hadoop/mapred-site.xml</code></p>
-<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>mapred.job.tracker<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>localhost:54311<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>The host and port that the MapReduce job tracker runs</span><br><span class="line">  at.  If &quot;local&quot;, then jobs are run in-process as a single map</span><br><span class="line">  and reduce task.</span><br><span class="line">  <span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>修改<code>hdfs-site.xml</code></p>
-<p>在修改之前，需要切换回超级管理员账户，创建需要用到的目录</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /usr/local/hadoop_store/hdfs/namenode</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /usr/local/hadoop_store/hdfs/datanode</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">chown</span> -R hduser:hadoop /usr/local/hadoop_store</span></span><br></pre></td></tr></table></figure></div>
-
-<p>然后切换回来<code>hadoop</code>用户，修改配置文件：<code>/usr/local/hadoop/etc/hadoop/hdfs-site.xml</code>，改为：</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">&lt;configuration&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">  &lt;name&gt;dfs.replication&lt;/name&gt;</span><br><span class="line">  &lt;value&gt;1&lt;/value&gt;</span><br><span class="line">  &lt;description&gt;Default block replication.</span><br><span class="line">  The actual number of replications can be specified when the file is created.</span><br><span class="line">  The default is used if replication is not specified in create time.</span><br><span class="line">  &lt;/description&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">   &lt;name&gt;dfs.namenode.name.dir&lt;/name&gt;</span><br><span class="line">   &lt;value&gt;file:/usr/local/hadoop_store/hdfs/namenode&lt;/value&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">   &lt;name&gt;dfs.datanode.data.dir&lt;/name&gt;</span><br><span class="line">   &lt;value&gt;file:/usr/local/hadoop_store/hdfs/datanode&lt;/value&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;/configuration&gt;</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>格式化<code>HDFS</code></p>
-<p><code>hadoop namenode –format</code></p>
-</li>
-</ul>
-</li>
-</ul>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../my_imgs/hadoop3.png"
-                      alt="hadoop3"
-                ></p>
-<ul>
-<li><p>启动<code>Hadoop</code></p>
-<p>设置无密码登录</p>
-<div class="highlight-container" data-rel="Plaintext"><figure class="iseeu highlight plaintext"><table><tr><td class="code"><pre><span class="line">ssh-keygen -t rsa</span><br><span class="line"></span><br><span class="line">chmod 755 ~/.ssh</span><br><span class="line"></span><br><span class="line">cd ~/.ssh</span><br><span class="line"></span><br><span class="line">cat id_rsa.pub &gt;&gt; authorized_keys</span><br></pre></td></tr></table></figure></div>
-
-<p>连接本地</p>
-<p><code>ssh localhost</code></p>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../my_imgs/hadoop4.png"
-                      alt="hadoop4"
-                ></p>
-<p>启动：</p>
-<p><code> start-all.sh</code></p>
-<p>查看服务：</p>
-<p><code>jps</code></p>
-</li>
-</ul>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../my_imgs/hadoop5.png"
-                      alt="hadoop5"
                 ></p>
 ]]></content>
       <categories>
@@ -847,6 +729,129 @@
       </categories>
       <tags>
         <tag>JavaScript</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>Ubuntu 单机配置 Hadoop 环境</title>
+    <url>/2023/04/16/Ubuntu%20%E5%8D%95%E6%9C%BA%E9%85%8D%E7%BD%AE%20Hadoop/</url>
+    <content><![CDATA[<ul>
+<li><p>创建<code>Hadoop</code>用户</p>
+<p><code> sudo useradd -m hadoop -s /bin/bash</code></p>
+</li>
+<li><p>设置<code>Hadoop</code>密码</p>
+<p><code>sudo passwd hadoop</code></p>
+</li>
+<li><p>为<code>Hadoop</code>用户增加管理员权限</p>
+<p><code>sudo adduser hadoop sudo</code></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../my_imgs/hadoop1.png"
+                      alt="hadoop1"
+                ></p>
+</li>
+<li><h3 id="安装配置SSH"><a href="#安装配置SSH" class="headerlink" title="安装配置SSH"></a>安装配置<code>SSH</code></h3><div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get install ssh</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">su hadoop</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">ssh-keygen -t rsa -P <span class="string">&quot;&quot;</span></span></span><br><span class="line"></span><br><span class="line">cat ~/.ssh/id_rsa.pub &gt;&gt; ~/.ssh/authorized_keys</span><br></pre></td></tr></table></figure></div>
+
+<p>接下来运行 ssh 命令,测试一下是否成功.</p>
+<p><code>$ ssh localhost</code></p>
+</li>
+<li><h3 id="配置java环境"><a href="#配置java环境" class="headerlink" title="配置java环境"></a>配置<code>java</code>环境</h3></li>
+</ul>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get update</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get install default-jdk</span></span><br></pre></td></tr></table></figure></div>
+
+<ul>
+<li><h3 id="安装hadoop"><a href="#安装hadoop" class="headerlink" title="安装hadoop"></a>安装<code>hadoop</code></h3><ul>
+<li>下载 hadoop</li>
+</ul>
+<p>清华镜像源：<a class="link"   href="https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/" >https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/ <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></p>
+<p><code>wget https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/hadoop-3.3.4/hadoop-3.3.4.tar.gz </code></p>
+<ul>
+<li><p>配置环境变量</p>
+<p>将<code>Hadoop</code>文件解压并移动到 <code>/usr/local/hadoop</code> 文件夹下</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">tar -zxvf hadoop-3.3.4.tar.gz</span><br><span class="line">sudo mv hadoop-3.3.4 /usr/local/hadoop</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>在<code>terminal</code>中输入 <code>sudo vi ~/.bashrc</code> ，按 <strong>i</strong> 进入编辑模式：</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">export HADOOP_HOME=/usr/local/hadoop</span><br><span class="line">export HADOOP_INSTALL=$HADOOP_HOME</span><br><span class="line">export HADOOP_MAPRED_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_COMMON_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_HDFS_HOME=$HADOOP_HOME</span><br><span class="line">export YARN_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_COMMON_LIB_NATIVE_DIR=$HADOOP_HOME/lib/native</span><br><span class="line">export PATH=$PATH:$HADOOP_HOME/sbin:$HADOOP_HOME/bin</span><br><span class="line">export HADOOP_OPTS=&quot;-Djava.library.path=$HADOOP_HOME/lib/native&quot;</span><br></pre></td></tr></table></figure></div></li>
+</ul>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../my_imgs/hadoop2.png"
+                      alt="hadoop2"
+                ></p>
+</li>
+<li><h3 id="修改Hadoop配置文件"><a href="#修改Hadoop配置文件" class="headerlink" title="修改Hadoop配置文件"></a>修改<code>Hadoop</code>配置文件</h3><p>打开 <code>/usr/local/hadoop/etc/hadoop/</code> 文件夹：</p>
+<ul>
+<li><p>配置 <code>hadoop-env.sh</code> 文件</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">显式声明java路径</span></span><br><span class="line">export JAVA_HOME=/usr/lib/jvm/java</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>配置<code>~/.bashrc</code></p>
+<div class="highlight-container" data-rel="Js"><figure class="iseeu highlight js"><table><tr><td class="code"><pre><span class="line">#<span class="variable constant_">HADOOP</span> <span class="variable constant_">VARIABLES</span> <span class="variable constant_">START</span></span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">JAVA_HOME</span>=<span class="regexp">/usr/</span>lib/jvm/java</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_INSTALL</span>=<span class="regexp">/usr/</span>local/hadoop</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">PATH</span>=<span class="attr">$PATH</span>:$HADOOP_INSTALL/bin</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">PATH</span>=<span class="attr">$PATH</span>:$HADOOP_INSTALL/sbin</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_MAPRED_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_COMMON_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_HDFS_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">YARN_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_COMMON_LIB_NATIVE_DIR</span>=$HADOOP_INSTALL/lib/native</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_OPTS</span>=<span class="string">&quot;-Djava.library.path=$HADOOP_INSTALL/lib/native&quot;</span></span><br><span class="line">#<span class="variable constant_">HADOOP</span> <span class="variable constant_">VARIABLES</span> <span class="variable constant_">END</span></span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>配置 <code>core-site.xml</code> 文件</p>
+<p>在修改这个文件之前，我们需要使用超级用户创建一个目录，并给予<code>hadoop</code>该目录的权限：</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /app/hadoop/tmp</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">chown</span> hadoop:hadoop /app/hadoop/tmp</span></span><br></pre></td></tr></table></figure></div>
+
+<p>接下来切换回<code>hadoop</code>用户，修改配置文件，文件路径：<code>/usr/local/hadoop/etc/hadoop/core-site.xml</code>，使用 VI，将配置改为：</p>
+<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>hadoop.tmp.dir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>/app/hadoop/tmp<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>A base for other temporary directories.<span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>fs.default.name<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>hdfs://localhost:54310<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>The name of the default file system.  A URI whose</span><br><span class="line">  scheme and authority determine the FileSystem implementation.  The</span><br><span class="line">  uri&#x27;s scheme determines the config property (fs.SCHEME.impl) naming</span><br><span class="line">  the FileSystem implementation class.  The uri&#x27;s authority is used to</span><br><span class="line">  determine the host, port, etc. for a filesystem.<span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>修改<code>mapred-site.xml</code></p>
+<p><code>vi  /usr/local/hadoop/etc/hadoop/mapred-site.xml</code></p>
+<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>mapred.job.tracker<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>localhost:54311<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>The host and port that the MapReduce job tracker runs</span><br><span class="line">  at.  If &quot;local&quot;, then jobs are run in-process as a single map</span><br><span class="line">  and reduce task.</span><br><span class="line">  <span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>修改<code>hdfs-site.xml</code></p>
+<p>在修改之前，需要切换回超级管理员账户，创建需要用到的目录</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /usr/local/hadoop_store/hdfs/namenode</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /usr/local/hadoop_store/hdfs/datanode</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">chown</span> -R hduser:hadoop /usr/local/hadoop_store</span></span><br></pre></td></tr></table></figure></div>
+
+<p>然后切换回来<code>hadoop</code>用户，修改配置文件：<code>/usr/local/hadoop/etc/hadoop/hdfs-site.xml</code>，改为：</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">&lt;configuration&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">  &lt;name&gt;dfs.replication&lt;/name&gt;</span><br><span class="line">  &lt;value&gt;1&lt;/value&gt;</span><br><span class="line">  &lt;description&gt;Default block replication.</span><br><span class="line">  The actual number of replications can be specified when the file is created.</span><br><span class="line">  The default is used if replication is not specified in create time.</span><br><span class="line">  &lt;/description&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">   &lt;name&gt;dfs.namenode.name.dir&lt;/name&gt;</span><br><span class="line">   &lt;value&gt;file:/usr/local/hadoop_store/hdfs/namenode&lt;/value&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">   &lt;name&gt;dfs.datanode.data.dir&lt;/name&gt;</span><br><span class="line">   &lt;value&gt;file:/usr/local/hadoop_store/hdfs/datanode&lt;/value&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;/configuration&gt;</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>格式化<code>HDFS</code></p>
+<p><code>hadoop namenode –format</code></p>
+</li>
+</ul>
+</li>
+</ul>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../my_imgs/hadoop3.png"
+                      alt="hadoop3"
+                ></p>
+<ul>
+<li><p>启动<code>Hadoop</code></p>
+<p>设置无密码登录</p>
+<div class="highlight-container" data-rel="Plaintext"><figure class="iseeu highlight plaintext"><table><tr><td class="code"><pre><span class="line">ssh-keygen -t rsa</span><br><span class="line"></span><br><span class="line">chmod 755 ~/.ssh</span><br><span class="line"></span><br><span class="line">cd ~/.ssh</span><br><span class="line"></span><br><span class="line">cat id_rsa.pub &gt;&gt; authorized_keys</span><br></pre></td></tr></table></figure></div>
+
+<p>连接本地</p>
+<p><code>ssh localhost</code></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../my_imgs/hadoop4.png"
+                      alt="hadoop4"
+                ></p>
+<p>启动：</p>
+<p><code> start-all.sh</code></p>
+<p>查看服务：</p>
+<p><code>jps</code></p>
+</li>
+</ul>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../my_imgs/hadoop5.png"
+                      alt="hadoop5"
+                ></p>
+]]></content>
+      <categories>
+        <category>笔记</category>
+        <category>Linux</category>
+        <category>Hadoop</category>
+      </categories>
+      <tags>
+        <tag>hadoop</tag>
+        <tag>linux</tag>
       </tags>
   </entry>
 </search>
