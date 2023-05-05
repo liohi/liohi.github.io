@@ -113,106 +113,6 @@
       </tags>
   </entry>
   <entry>
-    <title>MapReduce 基础操作</title>
-    <url>/2023/04/20/MapReduce%E5%AE%89%E8%A3%85%E5%92%8C%E9%85%8D%E7%BD%AE/</url>
-    <content><![CDATA[<h6 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h6><p><code>MapReduce</code>是一种分布式计算框架，用于处理大规模数据集的计算问题。它是由 Google 公司开发的，旨在简化并行计算的开发。</p>
-<p>在<code>MapReduce</code>中，计算问题被分解成两个阶段：映射（<code>Map</code>）和归约（<code>Reduce</code>）。映射阶段将输入数据划分成小的数据块，并将每个数据块映射到一组键值对。然后，这些键值对被传递给归约阶段，归约阶段对键值对进行分组，并对每组执行归约操作，生成最终结果。</p>
-<p><code>MapReduce</code>的优点是它可以在大规模计算集群上高效地并行运行，而无需开发人员关心底层的并发细节。这使得开发人员可以更专注于算法设计和问题解决，而不是处理并发和分布式系统的复杂性。</p>
-<h5 id="前提：确保配置好-Hadoop-环境"><a href="#前提：确保配置好-Hadoop-环境" class="headerlink" title="前提：确保配置好 Hadoop 环境"></a>前提：确保配置好 Hadoop 环境</h5><p>其中 MapReduce 对应 <code>&lt;HADOOP_HOME&gt;/etc/hadoop/mapred_site.xml</code>配置文件：</p>
-<p>（我的<code>HADOOP_HOME</code>是<code>/usr/local/hadoop</code>则对应）</p>
-<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="comment">&lt;!-- mapred_site.xml --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>yarn.app.mapreduce.am.env<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>HADOOP_MAPRED_HOME=/usr/local/hadoop<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>mapreduce.map.env<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>HADOOP_MAPRED_HOME=/usr/local/hadoop<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>mapreduce.reduce.env<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>HADOOP_MAPRED_HOME=/usr/local/hadoop<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
-
-<h4 id="启动服务"><a href="#启动服务" class="headerlink" title="启动服务"></a>启动服务</h4><ul>
-<li><p>进入 Hadoop 用户（取决于个人配置，没添加用户就不用）</p>
-<p><code>$ su hadoop</code></p>
-</li>
-<li><p>启动 ssh</p>
-<p><code>$ sudo service ssh start</code></p>
-</li>
-<li><p>链接本地服务</p>
-<p><code>$ ssh localhost</code></p>
-</li>
-<li><p>启动服务</p>
-<p><code>$ start-all.sh</code></p>
-</li>
-<li><p>jps 查看，显示如下则启动成功</p>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Map%20Reduce%E5%AE%89%E8%A3%85%E5%92%8C%E9%85%8D%E7%BD%AE.assets/image-20230419161304679.png"
-                      alt="image-20230419161304679"
-                ></p>
-</li>
-</ul>
-<h4 id="编写-WordCount-java"><a href="#编写-WordCount-java" class="headerlink" title="编写 WordCount.java"></a>编写 WordCount.java</h4><ul>
-<li><p>创建工作文件夹</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash"><span class="built_in">cd</span> /usr/local/hadoop</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> hadoop-demo</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">chmod</span> -R 777 hadoop-demo <span class="comment"># 修改权限</span></span></span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>编写 <code>WordCount.java</code></p>
-<p><code>$ vi WordCOunt.java</code></p>
-<div class="highlight-container" data-rel="Java"><figure class="iseeu highlight java"><table><tr><td class="code"><pre><span class="line"><span class="keyword">import</span> java.io.IOException;</span><br><span class="line"><span class="keyword">import</span> java.util.StringTokenizer;</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.conf.Configuration;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.fs.Path;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.io.IntWritable;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.io.Text;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.mapreduce.Job;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.mapreduce.Mapper;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.mapreduce.Reducer;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.mapreduce.lib.input.FileInputFormat;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">WordCount</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">class</span> <span class="title class_">TokenizerMapper</span></span><br><span class="line">            <span class="keyword">extends</span> <span class="title class_">Mapper</span>&lt;Object, Text, Text, IntWritable&gt;&#123;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">private</span> <span class="keyword">final</span> <span class="keyword">static</span> <span class="type">IntWritable</span> <span class="variable">one</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">IntWritable</span>(<span class="number">1</span>);</span><br><span class="line">        <span class="keyword">private</span> <span class="type">Text</span> <span class="variable">word</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Text</span>();</span><br><span class="line"></span><br><span class="line">        <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">map</span><span class="params">(Object key, Text value, Context context</span></span><br><span class="line"><span class="params">        )</span> <span class="keyword">throws</span> IOException, InterruptedException &#123;</span><br><span class="line">            <span class="type">StringTokenizer</span> <span class="variable">itr</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">StringTokenizer</span>(value.toString());</span><br><span class="line">            <span class="keyword">while</span> (itr.hasMoreTokens()) &#123;</span><br><span class="line">                word.set(itr.nextToken());</span><br><span class="line">                context.write(word, one);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">class</span> <span class="title class_">IntSumReducer</span></span><br><span class="line">            <span class="keyword">extends</span> <span class="title class_">Reducer</span>&lt;Text,IntWritable,Text,IntWritable&gt; &#123;</span><br><span class="line">        <span class="keyword">private</span> <span class="type">IntWritable</span> <span class="variable">result</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">IntWritable</span>();</span><br><span class="line"></span><br><span class="line">        <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">reduce</span><span class="params">(Text key, Iterable&lt;IntWritable&gt; values,</span></span><br><span class="line"><span class="params">                           Context context</span></span><br><span class="line"><span class="params">        )</span> <span class="keyword">throws</span> IOException, InterruptedException &#123;</span><br><span class="line">            <span class="type">int</span> <span class="variable">sum</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">            <span class="keyword">for</span> (IntWritable val : values) &#123;</span><br><span class="line">                sum += val.get();</span><br><span class="line">            &#125;</span><br><span class="line">            result.set(sum);</span><br><span class="line">            context.write(key, result);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> <span class="keyword">throws</span> Exception &#123;</span><br><span class="line">        <span class="type">Configuration</span> <span class="variable">conf</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Configuration</span>();</span><br><span class="line">        <span class="type">Job</span> <span class="variable">job</span> <span class="operator">=</span> Job.getInstance(conf, <span class="string">&quot;word count&quot;</span>);</span><br><span class="line">        job.setJarByClass(WordCount.class);</span><br><span class="line">        job.setMapperClass(TokenizerMapper.class);</span><br><span class="line">        job.setCombinerClass(IntSumReducer.class);</span><br><span class="line">        job.setReducerClass(IntSumReducer.class);</span><br><span class="line">        job.setOutputKeyClass(Text.class);</span><br><span class="line">        job.setOutputValueClass(IntWritable.class);</span><br><span class="line">        FileInputFormat.addInputPath(job, <span class="keyword">new</span> <span class="title class_">Path</span>(args[<span class="number">0</span>]));</span><br><span class="line">        FileOutputFormat.setOutputPath(job, <span class="keyword">new</span> <span class="title class_">Path</span>(args[<span class="number">1</span>]));</span><br><span class="line">        System.exit(job.waitForCompletion(<span class="literal">true</span>) ? <span class="number">0</span> : <span class="number">1</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div></li>
-</ul>
-<h4 id="打包成-JAR-文件"><a href="#打包成-JAR-文件" class="headerlink" title="打包成 JAR 文件"></a>打包成 JAR 文件</h4><div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">/hadoop-demo</span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash"><span class="built_in">mkdir</span> classes</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">javac -classpath <span class="variable">$&#123;HADOOP_CLASSPATH&#125;</span> -d classes WordCount.java</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">jar -cvf wordcount.jar -C classes/ .</span></span><br></pre></td></tr></table></figure></div>
-
-<blockquote>
-<p>若出现 <code>error: package org.apache.hadoop.conf does not exist</code>等错误可能是 <code>Hadoop</code>环境变量没配好</p>
-<p>解决：</p>
-<ul>
-<li><p><code>sudo vi ~/.bashrc</code></p>
-</li>
-<li><p>添加以下行</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># HADOOP_HOME</span></span></span><br><span class="line">export HADOOP_HOME=/path/to/hadoop</span><br><span class="line">export HADOOP_CLASSPATH=$($HADOOP_HOME/bin/hadoop classpath)</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p><code>source ~/.bashrc</code></p>
-</li>
-</ul>
-</blockquote>
-<h4 id="创建测试文件并运行"><a href="#创建测试文件并运行" class="headerlink" title="创建测试文件并运行"></a>创建测试文件并运行</h4><ul>
-<li><p>创建一个&#96;input.txt&#96;&#96;</p>
-<p><code>vi input.txt</code></p>
-</li>
-<li><p>随便写点东西…（推荐写几个重复的单词，空格分开，这样结果更直观）</p>
-<div class="highlight-container" data-rel="Plaintext"><figure class="iseeu highlight plaintext"><table><tr><td class="code"><pre><span class="line">bulabulabula 不啦不啦</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>将 input.txt 上传到 HDFS 文件系统 (HDFS 文件读写搜索历史文章有介绍)</p>
-<p><code>$ hdfs dfs -put input.txt /test1</code></p>
-</li>
-<li><p>提交 MapReduce 作业</p>
-<p><code>$ hadoop jar wordcount.jar WordCount /test1 /output</code></p>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Map%20Reduce%E5%AE%89%E8%A3%85%E5%92%8C%E9%85%8D%E7%BD%AE.assets/image-20230420111459501.png"
-                      alt="image-20230420111459501"
-                ></p>
-</li>
-<li><p>将 output 从 HDFS 系统提取出来</p>
-<p><code> hdfs dfs -get /output out</code></p>
-</li>
-<li><p>查看一下</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash"><span class="built_in">cd</span> out</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 可以看到_SUCCESS 和part_r_00000</span></span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">vi part_r_00000</span></span><br></pre></td></tr></table></figure></div>
-
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../assets/Map%20Reduce%E5%AE%89%E8%A3%85%E5%92%8C%E9%85%8D%E7%BD%AE.assets/image-20230420121625841.png"
-                      alt="image-20230420121625841"
-                ></p>
-<p>两个单词分别 1 个(当然在测试文件里可以创建几个重复的单词更直观)</p>
-</li>
-</ul>
-<h6 id="Over"><a href="#Over" class="headerlink" title="Over!"></a>Over!</h6>]]></content>
-      <categories>
-        <category>笔记</category>
-        <category>Linux</category>
-        <category>Hadoop</category>
-      </categories>
-      <tags>
-        <tag>hadoop</tag>
-        <tag>linux</tag>
-      </tags>
-  </entry>
-  <entry>
     <title>Hive+Hbase 的部署及使用</title>
     <url>/2023/04/24/Hive+Hbase%20%E7%9A%84%E9%83%A8%E7%BD%B2%E5%8F%8A%E4%BD%BF%E7%94%A8/</url>
     <content><![CDATA[<p>HBase 和 Hive 是 Hadoop 生态系统中常用的两个组件。HBase 是一个分布式的非关系型数据库，可以用来存储大量的结构化数据；Hive 是一个基于 Hadoop 的数据仓库工具，可以将结构化数据映射为一张数据库表，并提供类似 SQL 的查询语言。</p>
@@ -452,6 +352,229 @@
                      src="/images/loading.svg"
                      data-src="/../my_imgs/hdfs5.png"
                       alt="hdfs5"
+                ></p>
+]]></content>
+      <categories>
+        <category>笔记</category>
+        <category>Linux</category>
+        <category>Hadoop</category>
+      </categories>
+      <tags>
+        <tag>hadoop</tag>
+        <tag>linux</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>MapReduce 基础操作</title>
+    <url>/2023/04/20/MapReduce%E5%AE%89%E8%A3%85%E5%92%8C%E9%85%8D%E7%BD%AE/</url>
+    <content><![CDATA[<h6 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h6><p><code>MapReduce</code>是一种分布式计算框架，用于处理大规模数据集的计算问题。它是由 Google 公司开发的，旨在简化并行计算的开发。</p>
+<p>在<code>MapReduce</code>中，计算问题被分解成两个阶段：映射（<code>Map</code>）和归约（<code>Reduce</code>）。映射阶段将输入数据划分成小的数据块，并将每个数据块映射到一组键值对。然后，这些键值对被传递给归约阶段，归约阶段对键值对进行分组，并对每组执行归约操作，生成最终结果。</p>
+<p><code>MapReduce</code>的优点是它可以在大规模计算集群上高效地并行运行，而无需开发人员关心底层的并发细节。这使得开发人员可以更专注于算法设计和问题解决，而不是处理并发和分布式系统的复杂性。</p>
+<h5 id="前提：确保配置好-Hadoop-环境"><a href="#前提：确保配置好-Hadoop-环境" class="headerlink" title="前提：确保配置好 Hadoop 环境"></a>前提：确保配置好 Hadoop 环境</h5><p>其中 MapReduce 对应 <code>&lt;HADOOP_HOME&gt;/etc/hadoop/mapred_site.xml</code>配置文件：</p>
+<p>（我的<code>HADOOP_HOME</code>是<code>/usr/local/hadoop</code>则对应）</p>
+<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="comment">&lt;!-- mapred_site.xml --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>yarn.app.mapreduce.am.env<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>HADOOP_MAPRED_HOME=/usr/local/hadoop<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>mapreduce.map.env<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>HADOOP_MAPRED_HOME=/usr/local/hadoop<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>mapreduce.reduce.env<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>HADOOP_MAPRED_HOME=/usr/local/hadoop<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
+
+<h4 id="启动服务"><a href="#启动服务" class="headerlink" title="启动服务"></a>启动服务</h4><ul>
+<li><p>进入 Hadoop 用户（取决于个人配置，没添加用户就不用）</p>
+<p><code>$ su hadoop</code></p>
+</li>
+<li><p>启动 ssh</p>
+<p><code>$ sudo service ssh start</code></p>
+</li>
+<li><p>链接本地服务</p>
+<p><code>$ ssh localhost</code></p>
+</li>
+<li><p>启动服务</p>
+<p><code>$ start-all.sh</code></p>
+</li>
+<li><p>jps 查看，显示如下则启动成功</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Map%20Reduce%E5%AE%89%E8%A3%85%E5%92%8C%E9%85%8D%E7%BD%AE.assets/image-20230419161304679.png"
+                      alt="image-20230419161304679"
+                ></p>
+</li>
+</ul>
+<h4 id="编写-WordCount-java"><a href="#编写-WordCount-java" class="headerlink" title="编写 WordCount.java"></a>编写 WordCount.java</h4><ul>
+<li><p>创建工作文件夹</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash"><span class="built_in">cd</span> /usr/local/hadoop</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> hadoop-demo</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">chmod</span> -R 777 hadoop-demo <span class="comment"># 修改权限</span></span></span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>编写 <code>WordCount.java</code></p>
+<p><code>$ vi WordCOunt.java</code></p>
+<div class="highlight-container" data-rel="Java"><figure class="iseeu highlight java"><table><tr><td class="code"><pre><span class="line"><span class="keyword">import</span> java.io.IOException;</span><br><span class="line"><span class="keyword">import</span> java.util.StringTokenizer;</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.conf.Configuration;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.fs.Path;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.io.IntWritable;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.io.Text;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.mapreduce.Job;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.mapreduce.Mapper;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.mapreduce.Reducer;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.mapreduce.lib.input.FileInputFormat;</span><br><span class="line"><span class="keyword">import</span> org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">WordCount</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">class</span> <span class="title class_">TokenizerMapper</span></span><br><span class="line">            <span class="keyword">extends</span> <span class="title class_">Mapper</span>&lt;Object, Text, Text, IntWritable&gt;&#123;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">private</span> <span class="keyword">final</span> <span class="keyword">static</span> <span class="type">IntWritable</span> <span class="variable">one</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">IntWritable</span>(<span class="number">1</span>);</span><br><span class="line">        <span class="keyword">private</span> <span class="type">Text</span> <span class="variable">word</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Text</span>();</span><br><span class="line"></span><br><span class="line">        <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">map</span><span class="params">(Object key, Text value, Context context</span></span><br><span class="line"><span class="params">        )</span> <span class="keyword">throws</span> IOException, InterruptedException &#123;</span><br><span class="line">            <span class="type">StringTokenizer</span> <span class="variable">itr</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">StringTokenizer</span>(value.toString());</span><br><span class="line">            <span class="keyword">while</span> (itr.hasMoreTokens()) &#123;</span><br><span class="line">                word.set(itr.nextToken());</span><br><span class="line">                context.write(word, one);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">class</span> <span class="title class_">IntSumReducer</span></span><br><span class="line">            <span class="keyword">extends</span> <span class="title class_">Reducer</span>&lt;Text,IntWritable,Text,IntWritable&gt; &#123;</span><br><span class="line">        <span class="keyword">private</span> <span class="type">IntWritable</span> <span class="variable">result</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">IntWritable</span>();</span><br><span class="line"></span><br><span class="line">        <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">reduce</span><span class="params">(Text key, Iterable&lt;IntWritable&gt; values,</span></span><br><span class="line"><span class="params">                           Context context</span></span><br><span class="line"><span class="params">        )</span> <span class="keyword">throws</span> IOException, InterruptedException &#123;</span><br><span class="line">            <span class="type">int</span> <span class="variable">sum</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">            <span class="keyword">for</span> (IntWritable val : values) &#123;</span><br><span class="line">                sum += val.get();</span><br><span class="line">            &#125;</span><br><span class="line">            result.set(sum);</span><br><span class="line">            context.write(key, result);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> <span class="keyword">throws</span> Exception &#123;</span><br><span class="line">        <span class="type">Configuration</span> <span class="variable">conf</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Configuration</span>();</span><br><span class="line">        <span class="type">Job</span> <span class="variable">job</span> <span class="operator">=</span> Job.getInstance(conf, <span class="string">&quot;word count&quot;</span>);</span><br><span class="line">        job.setJarByClass(WordCount.class);</span><br><span class="line">        job.setMapperClass(TokenizerMapper.class);</span><br><span class="line">        job.setCombinerClass(IntSumReducer.class);</span><br><span class="line">        job.setReducerClass(IntSumReducer.class);</span><br><span class="line">        job.setOutputKeyClass(Text.class);</span><br><span class="line">        job.setOutputValueClass(IntWritable.class);</span><br><span class="line">        FileInputFormat.addInputPath(job, <span class="keyword">new</span> <span class="title class_">Path</span>(args[<span class="number">0</span>]));</span><br><span class="line">        FileOutputFormat.setOutputPath(job, <span class="keyword">new</span> <span class="title class_">Path</span>(args[<span class="number">1</span>]));</span><br><span class="line">        System.exit(job.waitForCompletion(<span class="literal">true</span>) ? <span class="number">0</span> : <span class="number">1</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div></li>
+</ul>
+<h4 id="打包成-JAR-文件"><a href="#打包成-JAR-文件" class="headerlink" title="打包成 JAR 文件"></a>打包成 JAR 文件</h4><div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">/hadoop-demo</span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash"><span class="built_in">mkdir</span> classes</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">javac -classpath <span class="variable">$&#123;HADOOP_CLASSPATH&#125;</span> -d classes WordCount.java</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">jar -cvf wordcount.jar -C classes/ .</span></span><br></pre></td></tr></table></figure></div>
+
+<blockquote>
+<p>若出现 <code>error: package org.apache.hadoop.conf does not exist</code>等错误可能是 <code>Hadoop</code>环境变量没配好</p>
+<p>解决：</p>
+<ul>
+<li><p><code>sudo vi ~/.bashrc</code></p>
+</li>
+<li><p>添加以下行</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># HADOOP_HOME</span></span></span><br><span class="line">export HADOOP_HOME=/path/to/hadoop</span><br><span class="line">export HADOOP_CLASSPATH=$($HADOOP_HOME/bin/hadoop classpath)</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p><code>source ~/.bashrc</code></p>
+</li>
+</ul>
+</blockquote>
+<h4 id="创建测试文件并运行"><a href="#创建测试文件并运行" class="headerlink" title="创建测试文件并运行"></a>创建测试文件并运行</h4><ul>
+<li><p>创建一个&#96;input.txt&#96;&#96;</p>
+<p><code>vi input.txt</code></p>
+</li>
+<li><p>随便写点东西…（推荐写几个重复的单词，空格分开，这样结果更直观）</p>
+<div class="highlight-container" data-rel="Plaintext"><figure class="iseeu highlight plaintext"><table><tr><td class="code"><pre><span class="line">bulabulabula 不啦不啦</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>将 input.txt 上传到 HDFS 文件系统 (HDFS 文件读写搜索历史文章有介绍)</p>
+<p><code>$ hdfs dfs -put input.txt /test1</code></p>
+</li>
+<li><p>提交 MapReduce 作业</p>
+<p><code>$ hadoop jar wordcount.jar WordCount /test1 /output</code></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Map%20Reduce%E5%AE%89%E8%A3%85%E5%92%8C%E9%85%8D%E7%BD%AE.assets/image-20230420111459501.png"
+                      alt="image-20230420111459501"
+                ></p>
+</li>
+<li><p>将 output 从 HDFS 系统提取出来</p>
+<p><code> hdfs dfs -get /output out</code></p>
+</li>
+<li><p>查看一下</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash"><span class="built_in">cd</span> out</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash"><span class="comment"># 可以看到_SUCCESS 和part_r_00000</span></span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">vi part_r_00000</span></span><br></pre></td></tr></table></figure></div>
+
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../assets/Map%20Reduce%E5%AE%89%E8%A3%85%E5%92%8C%E9%85%8D%E7%BD%AE.assets/image-20230420121625841.png"
+                      alt="image-20230420121625841"
+                ></p>
+<p>两个单词分别 1 个(当然在测试文件里可以创建几个重复的单词更直观)</p>
+</li>
+</ul>
+<h6 id="Over"><a href="#Over" class="headerlink" title="Over!"></a>Over!</h6>]]></content>
+      <categories>
+        <category>笔记</category>
+        <category>Linux</category>
+        <category>Hadoop</category>
+      </categories>
+      <tags>
+        <tag>hadoop</tag>
+        <tag>linux</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>Ubuntu 单机配置 Hadoop 环境</title>
+    <url>/2023/04/16/Ubuntu%20%E5%8D%95%E6%9C%BA%E9%85%8D%E7%BD%AE%20Hadoop/</url>
+    <content><![CDATA[<ul>
+<li><p>创建<code>Hadoop</code>用户</p>
+<p><code> sudo useradd -m hadoop -s /bin/bash</code></p>
+</li>
+<li><p>设置<code>Hadoop</code>密码</p>
+<p><code>sudo passwd hadoop</code></p>
+</li>
+<li><p>为<code>Hadoop</code>用户增加管理员权限</p>
+<p><code>sudo adduser hadoop sudo</code></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../my_imgs/hadoop1.png"
+                      alt="hadoop1"
+                ></p>
+</li>
+<li><h3 id="安装配置SSH"><a href="#安装配置SSH" class="headerlink" title="安装配置SSH"></a>安装配置<code>SSH</code></h3><div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get install ssh</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">su hadoop</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">ssh-keygen -t rsa -P <span class="string">&quot;&quot;</span></span></span><br><span class="line"></span><br><span class="line">cat ~/.ssh/id_rsa.pub &gt;&gt; ~/.ssh/authorized_keys</span><br></pre></td></tr></table></figure></div>
+
+<p>接下来运行 ssh 命令,测试一下是否成功.</p>
+<p><code>$ ssh localhost</code></p>
+</li>
+<li><h3 id="配置java环境"><a href="#配置java环境" class="headerlink" title="配置java环境"></a>配置<code>java</code>环境</h3></li>
+</ul>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get update</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get install default-jdk</span></span><br></pre></td></tr></table></figure></div>
+
+<ul>
+<li><h3 id="安装hadoop"><a href="#安装hadoop" class="headerlink" title="安装hadoop"></a>安装<code>hadoop</code></h3><ul>
+<li>下载 hadoop</li>
+</ul>
+<p>清华镜像源：<a class="link"   href="https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/" >https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/ <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></p>
+<p><code>wget https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/hadoop-3.3.4/hadoop-3.3.4.tar.gz </code></p>
+<ul>
+<li><p>配置环境变量</p>
+<p>将<code>Hadoop</code>文件解压并移动到 <code>/usr/local/hadoop</code> 文件夹下</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">tar -zxvf hadoop-3.3.4.tar.gz</span><br><span class="line">sudo mv hadoop-3.3.4 /usr/local/hadoop</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>在<code>terminal</code>中输入 <code>sudo vi ~/.bashrc</code> ，按 <strong>i</strong> 进入编辑模式：</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">export HADOOP_HOME=/usr/local/hadoop</span><br><span class="line">export HADOOP_INSTALL=$HADOOP_HOME</span><br><span class="line">export HADOOP_MAPRED_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_COMMON_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_HDFS_HOME=$HADOOP_HOME</span><br><span class="line">export YARN_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_COMMON_LIB_NATIVE_DIR=$HADOOP_HOME/lib/native</span><br><span class="line">export PATH=$PATH:$HADOOP_HOME/sbin:$HADOOP_HOME/bin</span><br><span class="line">export HADOOP_OPTS=&quot;-Djava.library.path=$HADOOP_HOME/lib/native&quot;</span><br></pre></td></tr></table></figure></div></li>
+</ul>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../my_imgs/hadoop2.png"
+                      alt="hadoop2"
+                ></p>
+</li>
+<li><h3 id="修改Hadoop配置文件"><a href="#修改Hadoop配置文件" class="headerlink" title="修改Hadoop配置文件"></a>修改<code>Hadoop</code>配置文件</h3><p>打开 <code>/usr/local/hadoop/etc/hadoop/</code> 文件夹：</p>
+<ul>
+<li><p>配置 <code>hadoop-env.sh</code> 文件</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">显式声明java路径</span></span><br><span class="line">export JAVA_HOME=/usr/lib/jvm/java</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>配置<code>~/.bashrc</code></p>
+<div class="highlight-container" data-rel="Js"><figure class="iseeu highlight js"><table><tr><td class="code"><pre><span class="line">#<span class="variable constant_">HADOOP</span> <span class="variable constant_">VARIABLES</span> <span class="variable constant_">START</span></span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">JAVA_HOME</span>=<span class="regexp">/usr/</span>lib/jvm/java</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_INSTALL</span>=<span class="regexp">/usr/</span>local/hadoop</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">PATH</span>=<span class="attr">$PATH</span>:$HADOOP_INSTALL/bin</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">PATH</span>=<span class="attr">$PATH</span>:$HADOOP_INSTALL/sbin</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_MAPRED_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_COMMON_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_HDFS_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">YARN_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_COMMON_LIB_NATIVE_DIR</span>=$HADOOP_INSTALL/lib/native</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_OPTS</span>=<span class="string">&quot;-Djava.library.path=$HADOOP_INSTALL/lib/native&quot;</span></span><br><span class="line">#<span class="variable constant_">HADOOP</span> <span class="variable constant_">VARIABLES</span> <span class="variable constant_">END</span></span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>配置 <code>core-site.xml</code> 文件</p>
+<p>在修改这个文件之前，我们需要使用超级用户创建一个目录，并给予<code>hadoop</code>该目录的权限：</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /app/hadoop/tmp</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">chown</span> hadoop:hadoop /app/hadoop/tmp</span></span><br></pre></td></tr></table></figure></div>
+
+<p>接下来切换回<code>hadoop</code>用户，修改配置文件，文件路径：<code>/usr/local/hadoop/etc/hadoop/core-site.xml</code>，使用 VI，将配置改为：</p>
+<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>hadoop.tmp.dir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>/app/hadoop/tmp<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>A base for other temporary directories.<span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>fs.default.name<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>hdfs://localhost:54310<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>The name of the default file system.  A URI whose</span><br><span class="line">  scheme and authority determine the FileSystem implementation.  The</span><br><span class="line">  uri&#x27;s scheme determines the config property (fs.SCHEME.impl) naming</span><br><span class="line">  the FileSystem implementation class.  The uri&#x27;s authority is used to</span><br><span class="line">  determine the host, port, etc. for a filesystem.<span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>修改<code>mapred-site.xml</code></p>
+<p><code>vi  /usr/local/hadoop/etc/hadoop/mapred-site.xml</code></p>
+<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>mapred.job.tracker<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>localhost:54311<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>The host and port that the MapReduce job tracker runs</span><br><span class="line">  at.  If &quot;local&quot;, then jobs are run in-process as a single map</span><br><span class="line">  and reduce task.</span><br><span class="line">  <span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>修改<code>hdfs-site.xml</code></p>
+<p>在修改之前，需要切换回超级管理员账户，创建需要用到的目录</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /usr/local/hadoop_store/hdfs/namenode</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /usr/local/hadoop_store/hdfs/datanode</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">chown</span> -R hduser:hadoop /usr/local/hadoop_store</span></span><br></pre></td></tr></table></figure></div>
+
+<p>然后切换回来<code>hadoop</code>用户，修改配置文件：<code>/usr/local/hadoop/etc/hadoop/hdfs-site.xml</code>，改为：</p>
+<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">&lt;configuration&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">  &lt;name&gt;dfs.replication&lt;/name&gt;</span><br><span class="line">  &lt;value&gt;1&lt;/value&gt;</span><br><span class="line">  &lt;description&gt;Default block replication.</span><br><span class="line">  The actual number of replications can be specified when the file is created.</span><br><span class="line">  The default is used if replication is not specified in create time.</span><br><span class="line">  &lt;/description&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">   &lt;name&gt;dfs.namenode.name.dir&lt;/name&gt;</span><br><span class="line">   &lt;value&gt;file:/usr/local/hadoop_store/hdfs/namenode&lt;/value&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">   &lt;name&gt;dfs.datanode.data.dir&lt;/name&gt;</span><br><span class="line">   &lt;value&gt;file:/usr/local/hadoop_store/hdfs/datanode&lt;/value&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;/configuration&gt;</span><br></pre></td></tr></table></figure></div>
+</li>
+<li><p>格式化<code>HDFS</code></p>
+<p><code>hadoop namenode –format</code></p>
+</li>
+</ul>
+</li>
+</ul>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../my_imgs/hadoop3.png"
+                      alt="hadoop3"
+                ></p>
+<ul>
+<li><p>启动<code>Hadoop</code></p>
+<p>设置无密码登录</p>
+<div class="highlight-container" data-rel="Plaintext"><figure class="iseeu highlight plaintext"><table><tr><td class="code"><pre><span class="line">ssh-keygen -t rsa</span><br><span class="line"></span><br><span class="line">chmod 755 ~/.ssh</span><br><span class="line"></span><br><span class="line">cd ~/.ssh</span><br><span class="line"></span><br><span class="line">cat id_rsa.pub &gt;&gt; authorized_keys</span><br></pre></td></tr></table></figure></div>
+
+<p>连接本地</p>
+<p><code>ssh localhost</code></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../my_imgs/hadoop4.png"
+                      alt="hadoop4"
+                ></p>
+<p>启动：</p>
+<p><code> start-all.sh</code></p>
+<p>查看服务：</p>
+<p><code>jps</code></p>
+</li>
+</ul>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/../my_imgs/hadoop5.png"
+                      alt="hadoop5"
                 ></p>
 ]]></content>
       <categories>
@@ -729,129 +852,6 @@
       </categories>
       <tags>
         <tag>JavaScript</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>Ubuntu 单机配置 Hadoop 环境</title>
-    <url>/2023/04/16/Ubuntu%20%E5%8D%95%E6%9C%BA%E9%85%8D%E7%BD%AE%20Hadoop/</url>
-    <content><![CDATA[<ul>
-<li><p>创建<code>Hadoop</code>用户</p>
-<p><code> sudo useradd -m hadoop -s /bin/bash</code></p>
-</li>
-<li><p>设置<code>Hadoop</code>密码</p>
-<p><code>sudo passwd hadoop</code></p>
-</li>
-<li><p>为<code>Hadoop</code>用户增加管理员权限</p>
-<p><code>sudo adduser hadoop sudo</code></p>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../my_imgs/hadoop1.png"
-                      alt="hadoop1"
-                ></p>
-</li>
-<li><h3 id="安装配置SSH"><a href="#安装配置SSH" class="headerlink" title="安装配置SSH"></a>安装配置<code>SSH</code></h3><div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get install ssh</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">su hadoop</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">ssh-keygen -t rsa -P <span class="string">&quot;&quot;</span></span></span><br><span class="line"></span><br><span class="line">cat ~/.ssh/id_rsa.pub &gt;&gt; ~/.ssh/authorized_keys</span><br></pre></td></tr></table></figure></div>
-
-<p>接下来运行 ssh 命令,测试一下是否成功.</p>
-<p><code>$ ssh localhost</code></p>
-</li>
-<li><h3 id="配置java环境"><a href="#配置java环境" class="headerlink" title="配置java环境"></a>配置<code>java</code>环境</h3></li>
-</ul>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get update</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo apt-get install default-jdk</span></span><br></pre></td></tr></table></figure></div>
-
-<ul>
-<li><h3 id="安装hadoop"><a href="#安装hadoop" class="headerlink" title="安装hadoop"></a>安装<code>hadoop</code></h3><ul>
-<li>下载 hadoop</li>
-</ul>
-<p>清华镜像源：<a class="link"   href="https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/" >https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/ <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></p>
-<p><code>wget https://mirrors.tuna.tsinghua.edu.cn/apache/hadoop/common/hadoop-3.3.4/hadoop-3.3.4.tar.gz </code></p>
-<ul>
-<li><p>配置环境变量</p>
-<p>将<code>Hadoop</code>文件解压并移动到 <code>/usr/local/hadoop</code> 文件夹下</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">tar -zxvf hadoop-3.3.4.tar.gz</span><br><span class="line">sudo mv hadoop-3.3.4 /usr/local/hadoop</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>在<code>terminal</code>中输入 <code>sudo vi ~/.bashrc</code> ，按 <strong>i</strong> 进入编辑模式：</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">export HADOOP_HOME=/usr/local/hadoop</span><br><span class="line">export HADOOP_INSTALL=$HADOOP_HOME</span><br><span class="line">export HADOOP_MAPRED_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_COMMON_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_HDFS_HOME=$HADOOP_HOME</span><br><span class="line">export YARN_HOME=$HADOOP_HOME</span><br><span class="line">export HADOOP_COMMON_LIB_NATIVE_DIR=$HADOOP_HOME/lib/native</span><br><span class="line">export PATH=$PATH:$HADOOP_HOME/sbin:$HADOOP_HOME/bin</span><br><span class="line">export HADOOP_OPTS=&quot;-Djava.library.path=$HADOOP_HOME/lib/native&quot;</span><br></pre></td></tr></table></figure></div></li>
-</ul>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../my_imgs/hadoop2.png"
-                      alt="hadoop2"
-                ></p>
-</li>
-<li><h3 id="修改Hadoop配置文件"><a href="#修改Hadoop配置文件" class="headerlink" title="修改Hadoop配置文件"></a>修改<code>Hadoop</code>配置文件</h3><p>打开 <code>/usr/local/hadoop/etc/hadoop/</code> 文件夹：</p>
-<ul>
-<li><p>配置 <code>hadoop-env.sh</code> 文件</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">显式声明java路径</span></span><br><span class="line">export JAVA_HOME=/usr/lib/jvm/java</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>配置<code>~/.bashrc</code></p>
-<div class="highlight-container" data-rel="Js"><figure class="iseeu highlight js"><table><tr><td class="code"><pre><span class="line">#<span class="variable constant_">HADOOP</span> <span class="variable constant_">VARIABLES</span> <span class="variable constant_">START</span></span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">JAVA_HOME</span>=<span class="regexp">/usr/</span>lib/jvm/java</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_INSTALL</span>=<span class="regexp">/usr/</span>local/hadoop</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">PATH</span>=<span class="attr">$PATH</span>:$HADOOP_INSTALL/bin</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">PATH</span>=<span class="attr">$PATH</span>:$HADOOP_INSTALL/sbin</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_MAPRED_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_COMMON_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_HDFS_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">YARN_HOME</span>=$HADOOP_INSTALL</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_COMMON_LIB_NATIVE_DIR</span>=$HADOOP_INSTALL/lib/native</span><br><span class="line"><span class="keyword">export</span> <span class="variable constant_">HADOOP_OPTS</span>=<span class="string">&quot;-Djava.library.path=$HADOOP_INSTALL/lib/native&quot;</span></span><br><span class="line">#<span class="variable constant_">HADOOP</span> <span class="variable constant_">VARIABLES</span> <span class="variable constant_">END</span></span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>配置 <code>core-site.xml</code> 文件</p>
-<p>在修改这个文件之前，我们需要使用超级用户创建一个目录，并给予<code>hadoop</code>该目录的权限：</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /app/hadoop/tmp</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">chown</span> hadoop:hadoop /app/hadoop/tmp</span></span><br></pre></td></tr></table></figure></div>
-
-<p>接下来切换回<code>hadoop</code>用户，修改配置文件，文件路径：<code>/usr/local/hadoop/etc/hadoop/core-site.xml</code>，使用 VI，将配置改为：</p>
-<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>hadoop.tmp.dir<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>/app/hadoop/tmp<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>A base for other temporary directories.<span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>fs.default.name<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>hdfs://localhost:54310<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>The name of the default file system.  A URI whose</span><br><span class="line">  scheme and authority determine the FileSystem implementation.  The</span><br><span class="line">  uri&#x27;s scheme determines the config property (fs.SCHEME.impl) naming</span><br><span class="line">  the FileSystem implementation class.  The uri&#x27;s authority is used to</span><br><span class="line">  determine the host, port, etc. for a filesystem.<span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>修改<code>mapred-site.xml</code></p>
-<p><code>vi  /usr/local/hadoop/etc/hadoop/mapred-site.xml</code></p>
-<div class="highlight-container" data-rel="Xml"><figure class="iseeu highlight xml"><table><tr><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">configuration</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>mapred.job.tracker<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>localhost:54311<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span>The host and port that the MapReduce job tracker runs</span><br><span class="line">  at.  If &quot;local&quot;, then jobs are run in-process as a single map</span><br><span class="line">  and reduce task.</span><br><span class="line">  <span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">configuration</span>&gt;</span></span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>修改<code>hdfs-site.xml</code></p>
-<p>在修改之前，需要切换回超级管理员账户，创建需要用到的目录</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /usr/local/hadoop_store/hdfs/namenode</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">mkdir</span> -p /usr/local/hadoop_store/hdfs/datanode</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">sudo <span class="built_in">chown</span> -R hduser:hadoop /usr/local/hadoop_store</span></span><br></pre></td></tr></table></figure></div>
-
-<p>然后切换回来<code>hadoop</code>用户，修改配置文件：<code>/usr/local/hadoop/etc/hadoop/hdfs-site.xml</code>，改为：</p>
-<div class="highlight-container" data-rel="Shell"><figure class="iseeu highlight shell"><table><tr><td class="code"><pre><span class="line">&lt;configuration&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">  &lt;name&gt;dfs.replication&lt;/name&gt;</span><br><span class="line">  &lt;value&gt;1&lt;/value&gt;</span><br><span class="line">  &lt;description&gt;Default block replication.</span><br><span class="line">  The actual number of replications can be specified when the file is created.</span><br><span class="line">  The default is used if replication is not specified in create time.</span><br><span class="line">  &lt;/description&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">   &lt;name&gt;dfs.namenode.name.dir&lt;/name&gt;</span><br><span class="line">   &lt;value&gt;file:/usr/local/hadoop_store/hdfs/namenode&lt;/value&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;property&gt;</span><br><span class="line">   &lt;name&gt;dfs.datanode.data.dir&lt;/name&gt;</span><br><span class="line">   &lt;value&gt;file:/usr/local/hadoop_store/hdfs/datanode&lt;/value&gt;</span><br><span class="line">&lt;/property&gt;</span><br><span class="line">&lt;/configuration&gt;</span><br></pre></td></tr></table></figure></div>
-</li>
-<li><p>格式化<code>HDFS</code></p>
-<p><code>hadoop namenode –format</code></p>
-</li>
-</ul>
-</li>
-</ul>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../my_imgs/hadoop3.png"
-                      alt="hadoop3"
-                ></p>
-<ul>
-<li><p>启动<code>Hadoop</code></p>
-<p>设置无密码登录</p>
-<div class="highlight-container" data-rel="Plaintext"><figure class="iseeu highlight plaintext"><table><tr><td class="code"><pre><span class="line">ssh-keygen -t rsa</span><br><span class="line"></span><br><span class="line">chmod 755 ~/.ssh</span><br><span class="line"></span><br><span class="line">cd ~/.ssh</span><br><span class="line"></span><br><span class="line">cat id_rsa.pub &gt;&gt; authorized_keys</span><br></pre></td></tr></table></figure></div>
-
-<p>连接本地</p>
-<p><code>ssh localhost</code></p>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../my_imgs/hadoop4.png"
-                      alt="hadoop4"
-                ></p>
-<p>启动：</p>
-<p><code> start-all.sh</code></p>
-<p>查看服务：</p>
-<p><code>jps</code></p>
-</li>
-</ul>
-<p><img  
-                     lazyload
-                     src="/images/loading.svg"
-                     data-src="/../my_imgs/hadoop5.png"
-                      alt="hadoop5"
-                ></p>
-]]></content>
-      <categories>
-        <category>笔记</category>
-        <category>Linux</category>
-        <category>Hadoop</category>
-      </categories>
-      <tags>
-        <tag>hadoop</tag>
-        <tag>linux</tag>
       </tags>
   </entry>
 </search>
