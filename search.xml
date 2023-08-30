@@ -1414,4 +1414,1285 @@
         <tag>Vue</tag>
       </tags>
   </entry>
+  <entry>
+    <title>Virtual Dom &amp; Diff</title>
+    <url>/2023/08/29/Virtual%20DOM%20%E5%92%8C%20Diff%20%E7%AE%97%E6%B3%95/</url>
+    <content><![CDATA[<h2 id="响应式原理"><a href="#响应式原理" class="headerlink" title="响应式原理"></a>响应式原理</h2><p>Vue 的响应式系统是其核心特点之一，它使得数据的变化能够自动地更新视图。响应式系统的原理主要涉及以下几个方面：</p>
+<ol>
+<li><p><strong>侦听属性（Getter 和 Setter）：</strong> Vue 在初始化数据对象时，会使用 JavaScript 的 <code>Object.defineProperty</code> 或 <code>Proxy</code> 来劫持对象属性的访问（Getter）和修改（Setter）。这意味着当你访问一个属性时，Vue 能够捕捉到这个操作，并执行相应的逻辑。</p>
+</li>
+<li><p><strong>依赖追踪：</strong> 当组件渲染时，它会读取数据属性，这时 Vue 会将这些属性与当前组件实例建立关联。在关联建立后，属性变化时就会触发相应的更新操作。这个关联关系被称为“依赖”，Vue 使用一种叫做“依赖追踪”的机制来收集依赖关系。</p>
+</li>
+<li><p><strong>Watcher（观察者）：</strong> 在模板中，如果一个属性被用于渲染，那么 Vue 会创建一个 Watcher 对象来追踪这个属性的依赖关系。每个 Watcher 对象都和一个表达式相关联，这个表达式是属性在模板中的引用。当属性变化时，依赖于这个属性的所有 Watcher 都会被通知，从而触发更新。</p>
+</li>
+<li><p><strong>响应式数据的生成：</strong> 在 Vue 实例化过程中，会将数据对象中的每个属性转化为“响应式”的。当你修改这些属性时，Vue 会通知相关的 Watcher，从而触发视图的更新。</p>
+</li>
+<li><p><strong>批量异步更新：</strong> 为了提高性能，Vue 在一次数据变更中会进行异步的批量更新。它将数据变更的操作放入一个异步队列中，在下一个事件循环周期中，才会批量处理这些更新操作。这样可以减少不必要的 DOM 操作，提高性能。</p>
+</li>
+</ol>
+<p>综上所述，Vue 的响应式系统的核心思想是通过拦截属性的访问和修改操作，来建立属性与依赖之间的关联。当属性发生变化时，所有依赖于这个属性的 Watcher 都会被通知，从而自动触发视图的更新，实现了数据与视图的自动同步。这种机制使得开发者能够更便捷地管理和维护数据状态，并且提供了更好的用户体验。</p>
+<h2 id="Virtual-DOM-和-Diff-算法"><a href="#Virtual-DOM-和-Diff-算法" class="headerlink" title="Virtual DOM 和 Diff 算法"></a>Virtual DOM 和 Diff 算法</h2><h3 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h3><p>对于<code>JS</code> 代码或者<code>CSS</code>样式代码，每次对 DOM 直接进行操作，会触发回流（<code>reflow</code>）和重绘（<code>repaint</code>），造成巨大开销，所以减少 DOM 操作是网页优化的策略之一，由此出现了虚拟 DOM 和 Diff 算法；顾名思义，虚拟 DOM 并非是一个真实存在的 DOM，也就是还并未上树，Diff 算法也就是比较新旧虚拟 DOM 两者（<code>oldVnode</code>，<code>newVnode</code>）的不同之处，在逻辑里对比得出最小量更新再进行上树，也就减少了 DOM 操作。</p>
+<blockquote>
+<p><code>reflow</code> 与 <code>repaint</code>：浏览器使用的是流式布局（Flow Based Layout），会把 HTML 解析成 <code>DOM</code> 树，把 CSS 解析成 <code>CSSOM</code> 树，<code>DOM</code> 和 <code>CSSOM</code> 合并成为 <code>Render Tree</code>，然后就可以进行后续渲染… 由于浏览器的流式布局。</p>
+<p>当浏览器渲染完成后，<code>Render Tree</code>中部分或者全部尺寸、结构、或某些属性发生变化的时候，浏览器重新渲染的过程成为回流（<code>reflow</code>），以下操作都会导致回流：</p>
+<ul>
+<li><p>页面首次渲染</p>
+</li>
+<li><p>浏览器窗口大小发生改变</p>
+</li>
+<li><p>元素尺寸或位置发生改变</p>
+</li>
+<li><p>元素内容变化（文字数量或图片大小等等）</p>
+</li>
+<li><p>元素字体大小变化</p>
+</li>
+<li><p>添加或者删除<strong>可见</strong>的<code>DOM</code>元素</p>
+</li>
+<li><p>激活<code>CSS</code>伪类（例如：<code>:hover</code>）</p>
+</li>
+<li><p>查询某些属性或调用某些方法</p>
+</li>
+</ul>
+<p>当页面中元素样式的改变并不影响它在文档流中的位置时（例如：<code>color</code>、<code>background-color</code>、<code>visibility</code>等），浏览器会将新样式赋予给元素并重新绘制它，这个过程称为重绘</p>
+<p>​ 显然，回流的代价比重绘要高，现代浏览器会对频繁的回流或重绘操作进行优化：</p>
+<p>​ 浏览器会维护一个队列，把所有引起回流和重绘的操作放入队列中，如果队列中的任务数量或者时间间隔达 到一个阈值的，浏览器就会将队列清空，进行一次批处理，这样可以把多次回流和重绘变成一次。</p>
+<p><strong>回流必将引起重绘，重绘不一定会引起回流。</strong></p>
+</blockquote>
+<h3 id="Virtual-DOM"><a href="#Virtual-DOM" class="headerlink" title="Virtual DOM"></a>Virtual DOM</h3><p>虚拟 DOM（Virtual DOM）是 Vue、React 等前端框架中的核心概念，它是一种用 JavaScript 对象表示真实 DOM 结构的方式。虚拟 DOM 的原理是通过对比前后两个虚拟 DOM 树的差异，最小化对实际 DOM 的操作，从而提高性能。</p>
+<p>虚拟 DOM 的原理主要包括以下步骤：</p>
+<ol>
+<li><p><strong>初始渲染：</strong> 当组件首次渲染时，会生成一个虚拟 DOM 树，这个树与实际 DOM 结构类似，但只是在内存中的一个 JavaScript 对象表示。</p>
+</li>
+<li><p><strong>更新数据：</strong> 当数据发生变化，需要更新组件时，会生成一个新的虚拟 DOM 树。</p>
+</li>
+<li><p><strong>Diff 算法：</strong> 新旧虚拟 DOM 树会进行 Diff（差异）计算。Diff 算法的目标是找出新旧虚拟 DOM 之间的差异，即找出哪些节点需要更新、添加或删除。</p>
+</li>
+<li><p><strong>批量更新：</strong> 根据 Diff 计算的结果，将需要更新的部分抽象成一系列操作，然后一次性更新到实际 DOM 中。这样可以减少实际 DOM 操作的次数，提高性能。</p>
+</li>
+<li><p><strong>应用更新：</strong> 将更新后的虚拟 DOM 树渲染到实际 DOM 上，用户最终看到的就是更新后的界面。</p>
+</li>
+</ol>
+<p>虚拟 DOM 的核心优势在于它将实际 DOM 操作的成本降低到最低。在每次数据变化时，框架会生成一个新的虚拟 DOM 树，然后与之前的虚拟 DOM 树进行比较，找出需要更新的部分。这个比较过程能够在 JavaScript 层面快速完成，避免了直接操作实际 DOM 所带来的性能损耗。最终，只有真正需要更新的部分会触发实际 DOM 操作，从而提高了性能效率。</p>
+<p>总之，虚拟 DOM 的原理是通过在 JavaScript 中维护一个轻量级的 DOM 抽象，通过比较差异来最小化实际 DOM 操作，从而在性能和用户体验方面带来优势。</p>
+<h3 id="Diff-算法"><a href="#Diff-算法" class="headerlink" title="Diff 算法"></a>Diff 算法</h3><p>Diff 算法是虚拟 DOM 技术的关键部分，用于比较新旧虚拟 DOM 树的差异并最小化对实际 DOM 的操作。下面是 Diff 算法的一般流程：</p>
+<ol>
+<li><p><strong>比较根节点：</strong> 首先，比较新旧虚拟 DOM 树的根节点。如果它们的类型不同，直接将旧节点替换为新节点，从而触发整个子树的重新渲染。</p>
+</li>
+<li><p><strong>深度优先遍历：</strong> 如果根节点类型相同，Diff 算法会进行深度优先遍历。它会逐层比较新旧节点的子节点，找出它们之间的差异。</p>
+</li>
+<li><p><strong>同级节点比较：</strong> 在遍历过程中，Diff 算法会按照同级节点的顺序进行比较。对于同级节点，通常情况下会比较它们的标签名（节点类型）、Key（如果存在）、属性和事件等。</p>
+</li>
+<li><p><strong>更新操作：</strong> 如果同级节点存在差异，Diff 算法会执行相应的更新操作。这些操作可以是插入新节点、移除旧节点、替换节点、更新属性、更新文本内容等。</p>
+</li>
+<li><p><strong>Key 的作用：</strong> 如果节点存在 Key 属性，Diff 算法会通过 Key 来判断节点是否可复用。如果新旧节点的 Key 相同，表示它们是同一节点，可以复用，否则需要进行替换操作。</p>
+</li>
+<li><p><strong>递归处理子节点：</strong> 对于有子节点的节点，Diff 算法会递归地对子节点进行比较和更新。这样能够保证整个 DOM 树的比较过程。</p>
+</li>
+<li><p><strong>批量更新：</strong> 在比较完所有节点后，Diff 算法会将需要更新的操作收集起来，并一次性应用到实际 DOM 上，从而减少实际 DOM 操作的次数。</p>
+</li>
+</ol>
+<p>需要注意的是，Diff 算法在进行节点比较时，会尽可能地在同级节点中找到相同的节点，从而复用之前的实际 DOM 结构。这样能够避免频繁地添加、移除节点，从而提高性能。</p>
+<p>虽然这是一个简化的 Diff 算法流程，实际框架会根据不同的情况进行优化，以提高算法效率。但总体来说，Diff 算法的目标是找出新旧虚拟 DOM 树之间的差异，将这些差异抽象为一系列操作，并最小化对实际 DOM 的操作，从而提高性能。</p>
+<h2 id="模板编译"><a href="#模板编译" class="headerlink" title="模板编译"></a>模板编译</h2><p>模板编译是将 Vue 中的模板语法（如指令、插值等）转换为渲染函数的过程。渲染函数可以生成虚拟 DOM，从而实现视图的渲染。以下是模板编译的一般原理：</p>
+<ol>
+<li><p><strong>解析：</strong> 模板编译开始时，会先对模板字符串进行解析。解析器会将模板字符串分析成一个个 Token，每个 Token 包含了类型、标签名、属性等信息。这个解析过程将模板字符串转化为一个 Token 流。</p>
+</li>
+<li><p><strong>优化：</strong> 在得到 Token 流后，编译器会对 Token 进行优化。其中一个重要的优化是静态节点的检测。静态节点是在编译时就能确定不会变化的节点，编译器会将它们标记出来，这样在后续的渲染过程中可以跳过对这些节点的比较和更新，提高性能。</p>
+</li>
+<li><p><strong>生成渲染函数：</strong> 优化后的 Token 流会被传递给代码生成器，它会根据 Token 生成对应的渲染函数。渲染函数是一个 JavaScript 函数，它接受数据作为参数，生成虚拟 DOM。生成的渲染函数会嵌套在一个闭包内部，保持对编译器生成的一些辅助函数的引用。</p>
+</li>
+<li><p><strong>渲染函数执行：</strong> 当数据发生变化时，调用渲染函数，传入新的数据。渲染函数会根据数据生成新的虚拟 DOM，然后通过 Diff 算法比较新旧虚拟 DOM，找出需要更新的部分。</p>
+</li>
+<li><p><strong>批量更新：</strong> 根据 Diff 算法的结果，将需要更新的操作批量执行。这样能够最小化对实际 DOM 的操作，提高性能。</p>
+</li>
+</ol>
+<p>需要注意的是，模板编译是在构建阶段进行的，它将模板转化为渲染函数，因此只需要执行一次。这个过程能够将模板中的语法转化为 JavaScript 代码，使得在运行时能够快速地生成虚拟 DOM 并进行视图的更新。</p>
+<p>总结起来，模板编译的原理是通过解析模板字符串、优化生成渲染函数，将模板中的语法转化为 JavaScript 代码，以实现快速生成虚拟 DOM 并进行视图渲染。这个过程在 Vue 框架中发挥着关键作用。</p>
+<h2 id="组件化架构"><a href="#组件化架构" class="headerlink" title="组件化架构"></a>组件化架构</h2><p>Vue 的组件化架构是其核心特点之一，它基于组件的概念构建用户界面。以下是 Vue 组件化架构的一般原理：</p>
+<ol>
+<li><p><strong>组件定义：</strong> 在 Vue 中，一个组件可以通过创建一个 Vue 实例来定义。你可以使用 Vue.extend() 或直接使用 Vue 构造函数来定义一个组件。组件可以包含数据、模板、样式、方法等。</p>
+</li>
+<li><p><strong>模板：</strong> 组件通常包含一个模板部分，用于描述组件的外观。模板可以使用 Vue 的模板语法，包括插值、指令、条件渲染、列表渲染等。模板中的数据绑定会自动响应数据的变化。</p>
+</li>
+<li><p><strong>数据：</strong> 每个组件都可以拥有自己的数据，这些数据可以在组件内部使用。你可以使用 Vue 的响应式数据绑定，通过定义数据属性来实现自动更新视图。</p>
+</li>
+<li><p><strong>属性和事件：</strong> 组件可以接收父组件传递的属性（props），这些属性可以用于定制组件的外观和行为。组件还可以通过 <code>$emit</code> 方法触发自定义事件，与父组件或其他组件进行通信。</p>
+</li>
+<li><p><strong>组件嵌套：</strong> 在 Vue 中，你可以将一个组件嵌套在另一个组件内部。这种嵌套可以形成组件树的结构，从而构建复杂的界面。父组件可以传递数据和属性给子组件，实现数据的传递和共享。</p>
+</li>
+<li><p><strong>生命周期：</strong> Vue 组件有一系列生命周期钩子函数，用于在组件不同阶段执行逻辑。例如，<code>created</code> 钩子在组件被创建后调用，<code>mounted</code> 钩子在组件被添加到 DOM 后调用。</p>
+</li>
+<li><p><strong>全局和局部组件：</strong> 你可以在全局范围内注册一个组件，使其在任何地方都可用。也可以在局部范围内注册一个组件，使其只在特定的组件中可用。这样能够更好地管理组件的作用域和可见性。</p>
+</li>
+<li><p><strong>动态组件：</strong> Vue 允许你使用 <code>&lt;component&gt;</code> 元素动态地渲染不同的组件。通过绑定一个动态的组件名，你可以根据数据的变化来切换显示不同的组件。</p>
+</li>
+<li><p><strong>异步组件：</strong> Vue 支持异步加载组件，通过使用 <code>import()</code> 或返回 Promise 的工厂函数来定义异步组件。这可以优化应用的性能，只在需要时才加载组件。</p>
+</li>
+<li><p><strong>插槽：</strong> 插槽（Slot）是 Vue 中用于分发内容的一种机制。通过插槽，你可以将内容插入到组件的特定位置，使得组件更具灵活性。</p>
+</li>
+</ol>
+<p>综上所述，Vue 的组件化架构通过定义组件、模板、数据、属性、事件等实现了界面的模块化和可组合性。通过组件的嵌套和复用，能够构建出复杂的用户界面。Vue 的生命周期和响应式数据绑定等机制使得组件可以具有自身的行为和状态，从而实现了更高的可维护性和可重用性。</p>
+<h2 id="生命周期钩子"><a href="#生命周期钩子" class="headerlink" title="生命周期钩子"></a>生命周期钩子</h2><p>Vue 的生命周期钩子是一组在组件生命周期不同阶段被调用的函数。这些钩子函数允许你在组件的不同生命周期阶段执行自定义的逻辑。Vue 的生命周期钩子原理涉及以下几个方面：</p>
+<ol>
+<li><p><strong>初始化阶段：</strong></p>
+<ul>
+<li><code>beforeCreate</code>: 在组件实例被创建之前被调用。此时，组件的数据和方法还未初始化。</li>
+<li><code>created</code>: 在组件实例创建完成后被调用。此时，组件的数据已初始化，但 DOM 还未生成。</li>
+</ul>
+</li>
+<li><p><strong>模板编译和挂载阶段：</strong></p>
+<ul>
+<li><code>beforeMount</code>: 在组件模板被编译并挂载到实际 DOM 之前被调用。此时，组件模板已编译完成，但还未渲染到页面上。</li>
+<li><code>mounted</code>: 在组件模板被编译并挂载到实际 DOM 之后被调用。此时，组件已经渲染到页面上，并且可以访问到 DOM 元素。</li>
+</ul>
+</li>
+<li><p><strong>更新阶段：</strong></p>
+<ul>
+<li><code>beforeUpdate</code>: 在数据更新导致重新渲染之前被调用。此时，组件数据已更新，但 DOM 还未重新渲染。</li>
+<li><code>updated</code>: 在数据更新导致重新渲染之后被调用。此时，组件数据已更新，DOM 也已重新渲染。</li>
+</ul>
+</li>
+<li><p><strong>销毁阶段：</strong></p>
+<ul>
+<li><code>beforeDestroy</code>: 在组件实例销毁之前被调用。此时，组件还处于活动状态，可以执行清理工作。</li>
+<li><code>destroyed</code>: 在组件实例销毁之后被调用。此时，组件已经被完全销毁，不再能访问到组件的数据和方法。</li>
+</ul>
+</li>
+</ol>
+<p>生命周期钩子的原理是在 Vue 实例化时，将钩子函数注册到组件的生命周期中。当组件在不同阶段进行相应的操作时，Vue 会自动调用相应的钩子函数。例如，在创建组件实例时，会调用 <code>beforeCreate</code> 和 <code>created</code> 钩子；在更新组件数据时，会调用 <code>beforeUpdate</code> 和 <code>updated</code> 钩子，依此类推。</p>
+<p>需要注意的是，Vue 3 在生命周期钩子方面有一些变化，引入了 <code>beforeMount</code> 和 <code>mounted</code> 钩子的代替品：<code>beforeMount</code> 变为 <code>onBeforeMount</code>，<code>mounted</code> 变为 <code>onMounted</code>，以此类推。这些变化是为了更好地与 Vue 3 的 Composition API 结合使用。</p>
+<p>总之，Vue 的生命周期钩子原理是在组件生命周期的不同阶段，自动调用注册的钩子函数，使得开发者能够在不同的时刻执行自定义逻辑，实现更灵活的组件行为。</p>
+<h2 id="指令和事件"><a href="#指令和事件" class="headerlink" title="指令和事件"></a>指令和事件</h2><p>Vue 提供了一系列指令（如 <code>v-model</code>、<code>v-bind</code>、<code>v-if</code> 等）和事件（如 <code>@click</code>、<code>@input</code> 等）来操作 DOM 和实现交互。这些指令和事件能够方便地绑定数据、响应用户输入以及更新视图。</p>
+<p><strong>指令原理：</strong></p>
+<ol>
+<li><p><strong>解析和编译阶段：</strong> 在 Vue 的编译阶段，会解析模板中的指令，例如 <code>v-bind</code>、<code>v-model</code> 等。解析后的指令会被转化成对应的虚拟 DOM 渲染函数。</p>
+</li>
+<li><p><strong>运行时渲染阶段：</strong> 在组件渲染时，虚拟 DOM 渲染函数会执行指令的逻辑。例如，<code>v-bind</code> 指令会根据数据动态绑定元素属性，<code>v-model</code> 指令会双向绑定输入框的值。</p>
+</li>
+<li><p><strong>响应式绑定：</strong> 指令通常涉及到数据的绑定和更新。Vue 会根据数据的变化，自动更新指令绑定的内容。例如，<code>v-bind</code> 指令会监听数据变化，实时更新绑定的属性值。</p>
+</li>
+</ol>
+<p><strong>事件原理：</strong></p>
+<ol>
+<li><p><strong>事件绑定：</strong> 在模板中，可以使用 <code>@</code> 或 <code>v-on</code> 指令来绑定事件监听器。例如，<code>@click</code> 或 <code>v-on:click</code> 绑定点击事件。</p>
+</li>
+<li><p><strong>事件代理：</strong> Vue 通过事件代理的方式，将事件监听器绑定到组件的根元素上。这样就可以在组件内部的子元素上触发事件，事件会冒泡到根元素上。</p>
+</li>
+<li><p><strong>事件处理：</strong> 当触发事件时，Vue 会调用事件监听器。事件监听器是 Vue 组件中的方法，它可以访问组件的数据和方法。你可以在事件监听器中执行逻辑，更新数据或与服务器进行交互。</p>
+</li>
+<li><p><strong>事件参数：</strong> 事件监听器可以接收事件参数，例如 <code>$event</code>。你可以将事件参数传递给监听器方法，以便在方法内部使用。</p>
+</li>
+<li><p><strong>事件修饰符：</strong> Vue 提供事件修饰符，用于控制事件的行为。例如，<code>.prevent</code> 修饰符可以阻止默认行为，<code>.stop</code> 修饰符可以停止事件冒泡。</p>
+</li>
+</ol>
+<p>需要注意的是，Vue 的指令和事件是通过 JavaScript 代码实现的，它们会在编译和运行时被转化成相应的逻辑。指令通过虚拟 DOM 渲染函数实现数据绑定和更新，事件通过事件代理和监听器实现用户交互和逻辑处理。</p>
+<p>总之，Vue 的指令和事件机制使得开发者可以方便地操作 DOM 元素和处理用户交互。这些机制基于 Vue 的编译和运行时系统，以及响应式数据绑定，使得前端开发更加便捷和灵活。</p>
+<h2 id="异步更新队列"><a href="#异步更新队列" class="headerlink" title="异步更新队列"></a>异步更新队列</h2><p>Vue 在进行数据更新时，通常将更新操作放入异步队列中，然后在一个事件循环中进行更新。这样可以保证更新的顺序性，同时也能够合并多次数据变更，提升性能。</p>
+<p>Vue 异步更新队列是 Vue 在更新视图时的一种优化机制，它将多个数据变更操作合并到一次更新中，从而提高性能。这个机制涉及到 Vue 的异步更新策略、事件循环和 nextTick 原理。以下是 Vue 异步更新队列的原理：</p>
+<ol>
+<li><p><strong>响应式数据变更：</strong> 当 Vue 组件的响应式数据发生变化时，Vue 会标记这些变化，并将这些变化放入一个队列中。</p>
+</li>
+<li><p><strong>异步更新策略：</strong> Vue 使用异步更新策略，将数据变更操作延迟到下一个事件循环中执行。这样做的目的是为了将多次数据变更操作合并为一次，从而减少不必要的 DOM 操作和提高性能。</p>
+</li>
+<li><p><strong>事件循环：</strong> JavaScript 运行在事件循环中，每一轮事件循环被称为一个 tick。在每个 tick 内，JavaScript 会执行一些任务，然后检查是否需要更新视图。Vue 利用事件循环来实现异步更新队列。</p>
+</li>
+<li><p><strong>nextTick 原理：</strong> <code>nextTick</code> 是 Vue 提供的一个 API，它能够在 DOM 更新之后执行回调函数。在 Vue 内部，<code>nextTick</code> 利用了 JavaScript 的事件循环机制，将回调函数推入微任务队列（microtask queue）中，在 DOM 更新之后立即执行。</p>
+</li>
+<li><p><strong>更新队列处理：</strong> 在每个事件循环中，Vue 会检查更新队列，将队列中的变更操作合并并执行。这样，多个数据变更会在同一个事件循环内更新视图，从而提高性能。</p>
+</li>
+<li><p><strong>同步更新情况：</strong> 在某些情况下，如果你希望立即执行数据变更操作并更新视图，可以使用 <code>$nextTick</code> 或者在异步操作内部调用 <code>this.$forceUpdate()</code>。</p>
+</li>
+</ol>
+<p>通过异步更新队列，Vue 能够将多个数据变更操作合并为一次，减少不必要的性能开销。这种机制保证了响应式数据的更新和视图的同步性，同时也使得开发者能够更好地控制数据的更新时机。</p>
+<h2 id="响应式-API"><a href="#响应式-API" class="headerlink" title="响应式 API"></a>响应式 API</h2><p>Vue 的响应式 API 是其核心功能之一，它通过数据劫持和依赖追踪实现了数据的自动更新。以下是 Vue 响应式 API 的原理：</p>
+<ol>
+<li><p><strong>数据劫持：</strong> 在 Vue 中，每当创建一个数据对象时，Vue 会将数据对象的属性转换成 getter 和 setter。这样，当访问和修改属性时，Vue 可以捕获这些操作，并进行相应的处理。</p>
+</li>
+<li><p><strong>依赖追踪：</strong> 在数据劫持过程中，Vue 会为每个属性创建一个依赖追踪系统。每个属性都会有一个依赖集合，用于存储依赖于该属性的观察者（Watcher）。</p>
+</li>
+<li><p><strong>观察者模式：</strong> 观察者模式是 Vue 响应式系统的关键。当属性被访问时，Vue 会收集订阅了该属性的观察者，这些观察者会被添加到属性的依赖集合中。</p>
+</li>
+<li><p><strong>编译阶段：</strong> 在模板编译阶段，Vue 会解析模板中的表达式，识别出其中的数据引用。这些数据引用将被转化为 getter 调用，从而将观察者与属性建立联系。</p>
+</li>
+<li><p><strong>依赖收集：</strong> 在组件实例化时，Vue 会创建一个 Watcher 实例。这个 Watcher 实例会在模板中的每个数据引用处执行 getter，从而触发属性的依赖收集过程。</p>
+</li>
+<li><p><strong>派发更新：</strong> 当属性的值发生变化时，其 setter 会被调用。在 setter 中，Vue 会通知属性的所有观察者进行更新，从而保证视图与数据的同步性。</p>
+</li>
+<li><p><strong>异步更新：</strong> 为了提高性能，Vue 使用异步更新队列将多个数据变更操作合并到一次更新中。这样可以减少不必要的 DOM 操作，提高渲染性能。</p>
+</li>
+<li><p><strong>虚拟 DOM：</strong> 当数据更新时，Vue 会生成一个虚拟 DOM 树。虚拟 DOM 与之前的虚拟 DOM 进行比较，找出需要更新的部分，然后进行最小化的 DOM 操作。</p>
+</li>
+</ol>
+<p>通过数据劫持、依赖追踪和观察者模式，Vue 实现了数据的自动更新。这种机制使得开发者无需手动操作 DOM，而是通过操作数据，自动触发视图的更新。这种响应式的特性使得 Vue 构建动态、高效的用户界面成为可能。</p>
+]]></content>
+      <categories>
+        <category>笔记</category>
+        <category>Vue</category>
+      </categories>
+      <tags>
+        <tag>笔记</tag>
+        <tag>Vue</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>Java考证题目</title>
+    <url>/2023/08/29/%E5%8D%8E%E8%BF%AA%E8%80%83%E8%AF%81/</url>
+    <content><![CDATA[<h3 id="单选题"><a href="#单选题" class="headerlink" title="单选题"></a>单选题</h3><p><strong>题目 1</strong><br>Linux 系统中对名为 fido 的文件用 chmod 551 fido 进行了修改， 则它的许可权是？</p>
+<ul>
+<li>选项 1: -rwxr-xr-x</li>
+<li>选项 2: -rwxr–r</li>
+<li>选项 3: -r–r–r</li>
+<li>选项 4: -r-xr-x—x</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 2</strong><br>不紧急也不重要的工作采用（ ）方式解决。</p>
+<ul>
+<li>选项 1: 妥协</li>
+<li>选项 2: 迁就</li>
+<li>选项 3: 回避</li>
+<li>选项 4: 合作</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 3</strong><br>下列关于 ORACLE 数据库的描述,不正确的是？</p>
+<ul>
+<li>选项 1: 索引表含 ROWID 值</li>
+<li>选项 2: “一个事务即使不被提交, 也会被写入到重做日志中”</li>
+<li>选项 3: 拥有不同大小的回滚段没有任何益处</li>
+<li>选项 4: COMMIT 后,数据不一定立即写入数据文件中</li>
+</ul>
+<p>答案: A</p>
+<p><strong>题目 4</strong><br>下列不是 Linux 系统进程类型的是</p>
+<ul>
+<li>选项 1: 交互进程</li>
+<li>选项 2: 批处理进程</li>
+<li>选项 3: 守护进程</li>
+<li>选项 4: 就绪进程</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 5</strong><br>能有效地监督组织各项计划的落实和执行情况，发现计划与实际之间的差距，这一管理环节是</p>
+<ul>
+<li>选项 1: 计划</li>
+<li>选项 2: 组织</li>
+<li>选项 3: 领导</li>
+<li>选项 4: 控制</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 6</strong><br>划分软件生存周期的阶段时所应遵循的基本原则是</p>
+<ul>
+<li>选项 1: 各阶段的任务尽可能相关性</li>
+<li>选项 2: 各阶段的任务尽可能相对独立</li>
+<li>选项 3: 各阶段的任务在时间上连续</li>
+<li>选项 4: 各阶段的任务在时间上相对独立</li>
+</ul>
+<p>答案: B</p>
+<p><strong>题目 7</strong><br>古人云：“运筹于帷幄之中，决胜于千里之外”， 这里的“运筹帷幄”反映了管理的哪一个职能？</p>
+<ul>
+<li>选项 1: 计划职能</li>
+<li>选项 2: 组织职能</li>
+<li>选项 3: 领导职能</li>
+<li>选项 4: 控制职能</li>
+</ul>
+<p>答案: A</p>
+<p><strong>题目 8</strong><br>一个软件项目是否进行开发的结论是在哪个文档中作出的</p>
+<ul>
+<li>选项 1: 软件开发计划</li>
+<li>选项 2: 可行性报告</li>
+<li>选项 3: 需求分析说明书</li>
+<li>选项 4: 测试报告</li>
+</ul>
+<p>答案: B</p>
+<p><strong>题目 9</strong><br>预先决定要做什么、为什么要做、何时去做、在何地做、由什么人做以及如何做，是管理哪一项职能的任务？</p>
+<ul>
+<li>选项 1: 控制</li>
+<li>选项 2: 组织</li>
+<li>选项 3: 领导</li>
+<li>选项 4: 计划</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 10</strong><br>软件的横向重用是指重用不同应用领域中的软件元素。 （ ）是一种典型的、原始的横向重用机制。</p>
+<ul>
+<li>选项 1: 对象</li>
+<li>选项 2: 构件</li>
+<li>选项 3: 标准函数库</li>
+<li>选项 4: 设计模式</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 11</strong><br>某服务器软件系统能够正确运行并得出计算结果，但存在“系统出错后不能在要求的时间内恢复到正常状态”和“对系统进行二次开发时总要超过半年的时间”两个问题，上述问题依次与质量属性中的( )相关</p>
+<ul>
+<li>选项 1: 可用性和性能</li>
+<li>选项 2: 性能和可修改性</li>
+<li>选项 3: 性能和可测试性</li>
+<li>选项 4: 可用性和可修改性</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 12</strong><br>在哪一层上监听客户所作的远程方法调用，并重定向服务器上的远程 RMI 服务的调用？</p>
+<ul>
+<li>选项 1: Remote Reference 层</li>
+<li>选项 2: Application 层</li>
+<li>选项 3: Stub&#x2F;Skeleton 层</li>
+<li>选项 4: Transport 层</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 13</strong><br>某软件企业开发了一套能够同硬件结合以提高设备性能的软件产品，向国家专利局申请方法发明专利，获得了专利权，并为该软件产品冠以“昆仑”商品专用标识，但未进行商标注册上市销售。 此情况下，该软件产品不可能得到我国（ ）的保护</p>
+<ul>
+<li>选项 1: 著作权法</li>
+<li>选项 2: 专利法</li>
+<li>选项 3: 商标法</li>
+<li>选项 4: 刑法</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 14</strong><br>在三层结构中，数据访问层承担的责任是？</p>
+<ul>
+<li>选项 1: 定义实体类</li>
+<li>选项 2: 数据的增删改查操作</li>
+<li>选项 3: 业务逻辑的描述</li>
+<li>选项 4:</li>
+</ul>
+<p>页面展示和控制转发</p>
+<p>答案: B</p>
+<p><strong>题目 15</strong><br>某公司欲开发一个软件系统的在线文档帮助系统，用户可以在任何一个查询上下文中输入查询关键字，如果当前查询环境下没有相关内容，则系统会将查询按照一定的顺序转发给其他查询环境。 基于上述需求，采用( )最为合适</p>
+<ul>
+<li>选项 1: 责任链模式</li>
+<li>选项 2: 桥接模式</li>
+<li>选项 3: 装饰模式</li>
+<li>选项 4: 适配器模式</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 16</strong><br>使用 HTTPSession 接口来跟踪你的 Servlets 中会话数据。 为把值加入到此会话对象，你应使用哪个函数？</p>
+<ul>
+<li>选项 1: setValue()</li>
+<li>选项 2: addValue()</li>
+<li>选项 3: putValue()</li>
+<li>选项 4: addSession()</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 17</strong><br>下面的程序执行后没有报错，但数据总保存不到数据库，最可能的原因是</p>
+<div class="highlight-container" data-rel="Java"><figure class="iseeu highlight java"><table><tr><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">imain</span><span class="params">(String[] args)</span>&#123;</span><br><span class="line"> SessionFactory sf=<span class="keyword">new</span> <span class="title class_">Configration</span>().configure().buildSessionFactory();</span><br><span class="line"> Session session=sf.openSession();</span><br><span class="line"> Medal medal=<span class="keyword">new</span> <span class="title class_">Medal</span>();</span><br><span class="line"> medal.setOwner(“totong”);</span><br><span class="line"> medal.setType(“Gold medal”);</span><br><span class="line"> session.save(user);</span><br><span class="line"> session.close();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
+
+<ul>
+<li>选项 1: 配置文件配置有误</li>
+<li>选项 2: 没有在配置文件中包含对映射文件的声明</li>
+<li>选项 3: 没有对持久化操作捕捉异常</li>
+<li>选项 4: 没有开启事务</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 18</strong><br>如果事务 T1 需要两次读取同一数据项 A，但是在两次读操作的间隔中，另一个事务 T2 改变了 A 的值，那么此并发操作所引起的问题是？</p>
+<ul>
+<li>选项 1: 丢失更新</li>
+<li>选项 2: 死锁</li>
+<li>选项 3: 不可重复读</li>
+<li>选项 4: 读脏数据</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 19</strong><br>结构化系统分析主要是通过下列哪项进行分析的</p>
+<ul>
+<li>选项 1: 算法分解</li>
+<li>选项 2: 控制结构分解</li>
+<li>选项 3: 数据结构分解</li>
+<li>选项 4: 处理功能分解</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 20</strong><br>结构化设计方法采用变换分析和事务分析技术实现 从数据结构导出程序结构</p>
+<ul>
+<li>选项 1: 从模块结构导出程序结构</li>
+<li>选项 2: 从模块结构导出数据结构</li>
+<li>选项 3: 从数据流图导出初始化结构图</li>
+<li>选项 4: 静态存根客户端</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 21</strong><br>过程域对象在 Hibernate 中代表</p>
+<ul>
+<li>选项 1: 业务逻辑操作</li>
+<li>选项 2: 应用层操作</li>
+<li>选项 3: 数据库层操作</li>
+<li>选项 4: 组件对象操作</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 22</strong><br>HQL 不支持聚合函数有?</p>
+<ul>
+<li>选项 1: count(*)</li>
+<li>选项 2: avg(…)</li>
+<li>选项 3: count(…)</li>
+<li>选项 4: count(?)</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 23</strong><br>Under which conditions will check () return true when called from a different class?</p>
+<ul>
+<li>选项 1: Check() can never return true</li>
+<li>选项 2: Check() can return true when setXY is called by multiple threads.</li>
+<li>选项 3: “Check() can return true when multiple threads call setX and setY separately.”</li>
+<li>选项 4: “Check() can only return true if SyncTest is changed to allow x and y to be set separately.”</li>
+</ul>
+<p>答案: CD</p>
+<p><strong>题目 24</strong><br>对实际应用问题建立数学模型并求得结果后，还需要根据建模的目的和要求，利用相关知识，结合研究对象的特点，进行模型分析。 模型分析工作一般不包括</p>
+<ul>
+<li>选项 1: 模型的合理性分析</li>
+<li>选项 2: 模型的误差分析</li>
+<li>选项 3: 模型的先进性分析</li>
+<li>选项 4: 参数的灵敏性分析</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 25</strong><br>在软件开发过程中，如果项目的规模和工作量大，项目具有较大的开发团队，需求存在明显的优先级划分或系统具有较技术风险，则最时候使用哪种生命周期？</p>
+<ul>
+<li>选项 1: 增量模型</li>
+<li>选项 2: 快速原型</li>
+<li>选项 3: 瀑布模型</li>
+<li>选项 4: 螺旋模型</li>
+</ul>
+<p>答案: A</p>
+<p><strong>题目 26</strong><br>我国《计算机软件保护条例》所称的“发表”的含义是指将软件作品</p>
+<ul>
+<li>选项 1: 出版发行</li>
+<li>选项 2: 公之于众</li>
+<li>选项 3: 在版权局登记</li>
+<li>选项 4: 以某种物质形式固定下来</li>
+</ul>
+<p>答案: B</p>
+<p><strong>题目 27</strong><br>编写 Servlet 的 doPost 方法时，需要抛出异常为</p>
+<ul>
+<li>选项 1: ServletException, IOException</li>
+<li>选项 2: ServletException, RemoteException</li>
+<li>选项 3: HttpServletException, IOException</li>
+<li>选项 4: HttpServletException, RemoteException</li>
+</ul>
+<p>答案: A</p>
+<p><strong>题目 28</strong><br>J2EE 中，哪个类的什么方法用于创建对话</p>
+<ul>
+<li>选项 1: HttpServletRequest 的 getSession</li>
+<li>选项 2: HttpServletResponse 的 newSession</li>
+<li>选项 3: HttpSession 的 newInstance</li>
+<li>选项 4: HttpSession 的 getSession</li>
+</ul>
+<p>答案: A</p>
+<p>**题目</p>
+<p>29**<br>以下从四种不同的作用域中得到 Bean 的实例，说法错误的是</p>
+<ul>
+<li>选项 1: page 是指当前 Web 应用程序的所有 JSP 文件中取得实例，从 Page 对象中获取 JavaBean</li>
+<li>选项 2: request 是指在当前的用户请求中取得实例，从 ServletRequest 对象中获取 JavaBean</li>
+<li>选项 3: session 是指在当前的用户会话中取得实例，常用于一个用户登录在网站上全过程不同请求之间共享数据，从 HttpSession 对象中获取 JavaBean</li>
+<li>选项 4: application 是指在当前的应用程序中取得实例，常用于同一个应用程序不同用户访问时共享数据，从 ServletContext 对象中获取 JavaBean</li>
+</ul>
+<p>答案: A</p>
+<p><strong>题目 30</strong><br>企业在做计划时，应优先保证下列哪一组计划</p>
+<ul>
+<li>选项 1: 局部计划、作业计划、长期计划</li>
+<li>选项 2: 项目计划、管理计划、短期计划</li>
+<li>选项 3: 综合计划、战略计划、长期计划</li>
+<li>选项 4: 局部计划、战略计划、中期计划</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 31</strong><br>计划职能的主要任务就是确定</p>
+<ul>
+<li>选项 1: 组织的目标和实现目标的途径</li>
+<li>选项 2: 组织结构的蓝图</li>
+<li>选项 3: 组织中的工作设计</li>
+<li>选项 4: 组织的领导方式</li>
+</ul>
+<p>答案: A</p>
+<p><strong>题目 32</strong><br>能有效地监督组织各项计划的落实和执行情况，发现计划与实际之间的差距，这一管理环节是</p>
+<ul>
+<li>选项 1: 计划</li>
+<li>选项 2: 组织</li>
+<li>选项 3: 领导</li>
+<li>选项 4: 控制</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 33</strong><br>不同的数据库管理系统支持不同的数据模型，下列哪种不属于常用的数据模型？</p>
+<ul>
+<li>选项 1: 关系模型</li>
+<li>选项 2: 网状模型</li>
+<li>选项 3: 层次模型</li>
+<li>选项 4: 链表模型</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 34</strong><br>数据流图（DFD）是用于描述结构化方法中（ ) 阶段的工具</p>
+<ul>
+<li>选项 1: 可行性分析</li>
+<li>选项 2: 详细设计</li>
+<li>选项 3: 需求分析</li>
+<li>选项 4: 程序编码</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 35</strong><br>下面关于远程接口描述正确的是</p>
+<ul>
+<li>选项 1: 远程接口监听客户调用的远程方法调用并重定向对服务器上的远程 RMI 服务器的调用。</li>
+<li>选项 2: 用唯一名注册的远程对象的接口</li>
+<li>选项 3: 其声明的方法可被客户远程地调用的接口。</li>
+<li>选项 4: 声明和定义了可被客户远程地调用的方法的接口</li>
+</ul>
+<p>答案: C</p>
+<p><strong>题目 36</strong><br>用以下方法中哪一个把目标应用作为 bean 激活的定制事件的监听者（listener）注册</p>
+<ul>
+<li>选项 1: void addPropertyChangeListener()</li>
+<li>选项 2: void firePropertyChange()</li>
+<li>选项 3: removeXXXListener()</li>
+<li>选项 4: void addXXXListener()</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 37</strong><br>在 J2EE 中，对于 Httpservlet 类的描述，错误的是？</p>
+<ul>
+<li>选项 1: 我们自己编写的 Servlet 继承了 Httpservlet 类，一定需覆盖 doPost 或者 doGet</li>
+<li>选项 2: HttpServlet 类扩展了 GenericServlet 类，实现了 GenericServlet 类的抽象方法</li>
+<li>选项 3: HttpServlet 类中处理客户请求和响应时所使用的两个接口是：HttpServletRequest 和 HttpServletResponse</li>
+<li>选项 4: 我们自己编写的 servlet 继承了 Httpservlet 类，一般只需要覆盖 doPost 方法，不必覆盖 service（）方法，因为一个 service（）方法会调用 doPost 或者 doGet 方法</li>
+</ul>
+<p>答案: A</p>
+<p><strong>题目 38</strong><br>下面关于合同变更与变更前后合同之间关系的正确说法是</p>
+<ul>
+<li>选项 1: 合同变更后，已经履行的债务失去了法律依据，应该恢复原状</li>
+<li>选项 2: 合同变更部分条款后，未变更的部分视为已经变更</li>
+<li>选项 3: 合同变更后，已经存在的损害赔偿请求权不复存在</li>
+<li>选项 4: 合同变更必须以原合同关系存在为前提</li>
+</ul>
+<p>答案: D</p>
+<p><strong>题目 39</strong><br>哪种应用类型在分离的层次上处理表示逻辑、业务逻辑、及数据库的可交互性？</p>
+<ul>
+<li>选项 1: 分布应用</li>
+<li>选项 2: 以服务器为中心的应用</li>
+<li>选项 3: 客户&#x2F;服务器应用</li>
+<li>选项 4: 单块应用</li>
+</ul>
+<p>答案: A</p>
+<p><strong>题目 40</strong><br>下面关于数据持久化概念的描述，错误的是</p>
+<ul>
+<li>选项 1: 保存在内存中数据的状态是瞬时状态</li>
+<li>选项 2: 持久状态的数据在关机后数据依然存在</li>
+<li>选项 3: 数据可以由持久状态转换为瞬时状态</li>
+<li>选项 4: 将数据转换为持久状态的机制称为数据持久化</li>
+</ul>
+<p>答案: B</p>
+<p>以下是您提供的多选题的整理，按照题目、选项和答案的格式：</p>
+<h3 id="多选题"><a href="#多选题" class="headerlink" title="多选题"></a>多选题</h3><p><strong>题目 1</strong>:<br>Which two statements are true regarding the creation of a default constructor?</p>
+<p><strong>选项</strong>:<br>A. The default constructor initializes method variables.<br>B. The compiler always creates a default constructor for every class.<br>C. The default constructor initializes the instance variables declared in the class.<br>D. “When a class has only constructors with parameters, the compiler does not create a default constructor.”</p>
+<p><strong>答案</strong>: C, D</p>
+<p><strong>题目 2</strong>:<br>MVC 模式的优势有哪些?</p>
+<p><strong>选项</strong>:<br>A. MVC 模式使应用程序的结构更加清晰，通过将代码按照层次划分为业务逻辑&#x2F;数据层、用户界面和应用流程控制这三个层次，能够增强代码的稳定性.<br>B. MVC 模式实现了很好的分布式组件架构.<br>C. 对于项目开发而言，MVC 三层的分离有利于在项目小组内按照小组成员各自的擅长进行分工，有利于三个部分并行开发、加快项目进度.<br>D. MVC 模块功能的划分有利于在代码修改过程中进行模块的隔离，而不需要把具有不同功能的代码混杂在一起造成混乱.</p>
+<p><strong>答案</strong>: A, C, D</p>
+<p><strong>题目 3</strong>:<br>使用 JavaBean 的好处有哪些?</p>
+<p><strong>选项</strong>:<br>A. JavaBean 拥有标准化接口的优点，在开发期有可视化编程工具的支持，在运行期有 JSP 和 J2EE 连接器的支持.<br>B. JavaBean 更明确的把 WEB 页面的设计和软件的设计区分开来.<br>C. JavaBean 可以在多个应用程序中重用.<br>D. JavaBean 可以实现安全性、事务行为、并发性和持久性.</p>
+<p><strong>答案</strong>: A, B, C</p>
+<p><strong>题目 4</strong>:<br>属于推动我国 ITO 发展的因素有?</p>
+<p><strong>选项</strong>:<br>A. 价格优势明显.<br>B. 印度示范影响.<br>C. 通过认证企业增多.<br>D. 著名跨国企业示范.</p>
+<p><strong>答案</strong>: A, B, C, D</p>
+<p><strong>题目 5</strong>:<br>计划工作是一种最基本管理活动，应遵循的原则有：</p>
+<p><strong>选项</strong>:<br>A. 改变航道原则.<br>B. 限定因素原则.<br>C. 承诺原则.<br>D. 弹性原则.</p>
+<p><strong>答案</strong>: A, B, C, D</p>
+<p><strong>题目 6</strong>:<br>一般情况下，关系数据模型与对象模型之间有哪些匹配关系</p>
+<p><strong>选项</strong>:<br>A. 表对应类.<br>B. 记录对应对象.<br>C. 表的字段对应类的属性.<br>D. 表之间的参考关系对应类之间的依赖关系.</p>
+<p><strong>答案</strong>: A, C, D</p>
+<p><strong>题目 7</strong>:<br>weblogic 与 EJB 相关的部署描述文件有</p>
+<p><strong>选项</strong>:<br>A. ejb-jar.xml.<br>B. weblogic-ejb-jar.xml.<br>C. weblogic.xml.<br>D. weblogic-cmp-rdbms-jar.xml.</p>
+<p><strong>答案</strong>: A, B, D</p>
+<p><strong>题目 8</strong>:<br>下面不是 Hibernate 映射文件中包含的内容？</p>
+<p><strong>选项</strong>:<br>A. 数据库连接信息.<br>B. Hibernate 属性参数.<br>C. 主键生成策略.<br>D. 属性数据类型.</p>
+<p><strong>答案</strong>: A, B</p>
+<p><strong>题目 9</strong>:<br>下列属于外包特征的是</p>
+<p><strong>选项</strong>:<br>A. 企业的各项活动可以在时间并行，空间上分散进行.<br>B. 企业把某些业务转移给外部操作，是自身组织结构扁平化.<br>C. 依托信息技术与外部资源整合.<br>D. 企业在规模收缩中扩张.</p>
+<p><strong>答案</strong>: A, C, D</p>
+<p><strong>题目 10</strong>:<br>管理者要使自己主管的工作达到一定的标准和要求，必须具备管理所需的相应管理技能。这些管理技能主要包括</p>
+<p><strong>选项</strong>:<br>A. 领导技能.<br>B. 技术技能.<br>C. 人际技能.<br>D. 概念技能.</p>
+<p><strong>答案</strong>: B, C, D</p>
+<p>希望这有助于您。如果您还有其他问题或需要进一步的帮助，请随时告诉我。</p>
+<h3 id="判断题"><a href="#判断题" class="headerlink" title="判断题"></a>判断题</h3><table>
+<thead>
+<tr>
+<th>问题</th>
+<th>答案</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>在 JPQA 查询中，排除相同的对象用 distinct。</td>
+<td>√</td>
+</tr>
+<tr>
+<td>Bean 的事件是 java.util.EventObject 的子类。</td>
+<td>√</td>
+</tr>
+<tr>
+<td>Service()方法表示 Servlet 生命周期的结束。</td>
+<td>×</td>
+</tr>
+<tr>
+<td>ServletContext 类的 getRequestDispatcher()可以接受相对路径。</td>
+<td>×</td>
+</tr>
+<tr>
+<td>使用 Session 的 delete()会把对象的状态从数据库中移除。</td>
+<td>√</td>
+</tr>
+<tr>
+<td>在 Hibernate 中，有通用的数据库方言可以使用。</td>
+<td>×</td>
+</tr>
+<tr>
+<td>SessionFactory 是重量级的对象，不应该随意创建。如果系统中只有一个数据库存储源，只需要创建一个。</td>
+<td>√</td>
+</tr>
+<tr>
+<td>对原生 SQL 查询的控制是通过 Query 接口进行的。</td>
+<td>×</td>
+</tr>
+<tr>
+<td>专业技术人员在创新开始最为关键的环节是确认创新的机会，其战略意识和市场意识是创新获得成功的重要基础。</td>
+<td>√</td>
+</tr>
+<tr>
+<td>计划是一种约束，会降低组织的灵活性。</td>
+<td>×</td>
+</tr>
+</tbody></table>
+<p>​</p>
+<h3 id="填空题"><a href="#填空题" class="headerlink" title="填空题"></a>填空题</h3><ol>
+<li>Hibernate 处理事务的接口是 <strong>（Transaction）</strong>。</li>
+<li>Struts 2 以 <strong>（FilterDispatcher）</strong> 为核心控制器。</li>
+<li>构建 Struts 2 应用的最基础的几个类库是：struts2-core、commons-logging、 <strong>（xwork-core）</strong> 、freamarker 以及 ognl。</li>
+<li>控制共享资源的并发访问，需要用到的 java 关键字是 <strong>（synchronized）</strong>。</li>
+<li>数据库关系模型中，数据联系是通过表间的 <strong>（关键码）</strong> 实现的。</li>
+<li>一般来说，在管理软件中，软件生存周期各个阶段的工作量以 <strong>（维护阶段）</strong> 所占的比例最大。</li>
+<li>数据库封锁技术中主要有两种封锁：排他型封锁和 <strong>（共享）</strong> 型封锁。</li>
+<li>如果不想让实体 Bean 的某些属性映射到表的字段，用 <strong>（@Column）</strong> 注释。</li>
+<li>模块内部的算法设计在结构化方法的 <strong>（详细设计）</strong> 阶段进行。</li>
+<li>概念结构设计的目的是产生一个能反映 <strong>（需求）</strong> 的概念模型。</li>
+</ol>
+<h3 id="简答题"><a href="#简答题" class="headerlink" title="简答题"></a>简答题</h3><p><strong>问答题 1</strong>:<br><strong>问题</strong>: 用英文翻译以下两个句子</p>
+<ol>
+<li>服务提供商为了不断促进业务进程而采用的某种激励方式。当通过降低成本，提高收入或提高效率使客户受益时，服务提供商也同样受益。</li>
+<li>外包合同条款的一个方面。用于描述产品归属者的变更情况以及知识产权。“知识产权”是无形资产，它包含一定程度的创造性劳动，例如软件设计等。该条款保护合同双方维护其知识产权的权力，包括使用权、出版权和复制权。</li>
+</ol>
+<p><strong>答案</strong>:</p>
+<ol>
+<li>The service provider has some form of incentive for constantly improving the business process. When the client benefits (through reduced expenses, greater revenues, or improved efficiencies), so does the service provider.</li>
+<li>An aspect of the outsourcing contract’s Terms and Conditions. Specifies when any change of title to products occurs. It also specifies intellectual property rights. “Intellectual property” is intangible and involves some degree of creative effort, such as software design. This clause protects both parties’ rights to retain control over their intellectual property, including the rights to their use, publication, and copying.</li>
+</ol>
+<p><strong>问答题 2</strong>:<br><strong>问题</strong>: Hibernate 中持久化对象的生命周期以及各种状态直接的区别，并描述相互之间是如何转换的？</p>
+<p><strong>答案</strong>:<br>Hibernate 中持久化对象的生命周期有临时态、持久态和游离态三种。</p>
+<ul>
+<li>处于临时态的对象主键值为空，并且未与 session 关联，数据未保存到数据库中。</li>
+<li>处于持久态的对象与 session 关联起来，持久化后对象中的数据被保存到数据库中，并且主键值按照.hbm.xml 文件中配置的生成方式生成相应的值。</li>
+<li>处于游离态的对象脱离了 session 的管理，是持久化后的一种状态，主键值按照.hbm.xml 文件中配置的生成方式生成相应的值。<br>当 new 一个新的对象时，该对象处于临时态。当该对象被当作 session 的参数使用的时候，该对象处于持久态。事务提交，session 关闭后，该对象处于游离态。</li>
+</ul>
+<p><strong>问答题 3</strong>:<br><strong>问题</strong>: 项目开发要经历了哪几个阶段？简要说明项目的体系统架构：（客户层，表示层）web 层，业务层，数据层？</p>
+<p><strong>答案</strong>:<br>项目开发通常经历以下阶段：需求分析，设计，编码，测试，部署。</p>
+<ul>
+<li>客户层：主要是用户接口，可以是 Web 浏览器、Applet 小应用程序等，取决于客户需求。</li>
+<li>表示层：表示层负责展示数据和处理用户请求，包括 HTML 静态页面、JSP 页面、Servlet 等在服务器上运行的组件。</li>
+<li>业务层：业务层实现业务逻辑，服务器提供系统级服务，如事务管理、安全性等，并非控制层。</li>
+<li>数据层：数据层包括数据访问对象（DAO）等，用于实现对数据的增删改查等操作。</li>
+</ul>
+<p><strong>问答题 4</strong>:<br><strong>问题</strong>: 简述软件外包风险的防范策略？</p>
+<p><strong>答案</strong>:<br>软件外包风险是指软件外包的实施结果相对于预期目标的变动程度，即软件外包的预期收益的变动程度。软件外包双方必须增强风险防范意识，软件外包风险防范的策略主要有：</p>
+<ol>
+<li>制定正确的外包策略：外包前要认真分析实施外包的前提是否具备，实施软件外包的可能性有多大等。</li>
+<li>准确的核算和控制外包综合成本。</li>
+<li>周密的考察、确定和管理接包方。</li>
+<li>强化项目单点联系管理：发包方任命专人定点管理，承接方制定专人汇报联系。</li>
+<li>双方实施项目全程管理。</li>
+</ol>
+]]></content>
+      <categories>
+        <category>笔记</category>
+        <category>Java</category>
+      </categories>
+      <tags>
+        <tag>笔记</tag>
+        <tag>Java</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>前端面试笔记</title>
+    <url>/2023/08/29/%E9%9D%A2%E8%AF%95/</url>
+    <content><![CDATA[<h3 id="Javascipt考点"><a href="#Javascipt考点" class="headerlink" title="Javascipt考点"></a>Javascipt考点</h3><h4 id="闭包（Closures）"><a href="#闭包（Closures）" class="headerlink" title="闭包（Closures）"></a>闭包（Closures）</h4><p> 解释闭包的概念、原理和用途。了解闭包如何捕获外部变量以及可能导致的内存泄漏问题。</p>
+<blockquote>
+<p><strong>闭包的概念：</strong> 闭包是指一个函数能够记住并访问它被创建时所处的词法作用域，即使该函数在不同的作用域中被调用，也能够访问这个词法作用域中的变量。换句话说，闭包允许函数在其声明时的作用域之外被调用，但仍然可以访问其外部作用域的变量。</p>
+<p><strong>闭包的原理：</strong> 当一个函数被定义时，它会捕获所在作用域的变量，将这些变量保存在自己的闭包中。这意味着在函数内部可以访问外部作用域中的变量。当函数返回后，它的闭包仍然保持对外部作用域的引用，因此这些变量不会被垃圾回收机制清除，直到闭包不再被引用。</p>
+<p><strong>闭包的用途：</strong> 闭包在JavaScript中有许多有用的用途，包括：</p>
+<ol>
+<li><strong>数据封装和私有性：</strong> 通过闭包，可以创建私有变量和方法，将数据隐藏在函数作用域内，只通过暴露的接口访问，实现了信息的封装和隐藏。</li>
+<li><strong>模块化和命名空间：</strong> 通过闭包可以创建模块，将相关的功能封装在一个函数内部，避免命名冲突和全局变量污染。</li>
+<li><strong>回调函数：</strong> 在异步编程中，闭包可以用作回调函数，捕获外部作用域的状态，使得回调函数能够访问正确的数据。</li>
+<li><strong>高阶函数：</strong> 闭包可以用于创建高阶函数，即接受一个或多个函数作为参数或返回一个函数的函数。</li>
+</ol>
+<p><strong>闭包捕获外部变量：</strong> 闭包捕获了它被创建时所处的词法作用域中的变量。这意味着函数内部引用的外部变量，即使函数在其他地方被调用，它也能够访问这些变量。</p>
+<p><strong>内存泄漏问题：</strong> 闭包可以导致内存泄漏问题，特别是在不正确使用闭包的情况下。如果闭包长时间持有对外部作用域中大量变量的引用，这些变量将不会被垃圾回收，从而导致内存泄漏。为避免内存泄漏，需要在不再需要闭包时，手动解除对外部变量的引用，或者使用适当的垃圾回收策略。</p>
+</blockquote>
+<h5 id="闭包垃圾回收策略"><a href="#闭包垃圾回收策略" class="headerlink" title="闭包垃圾回收策略"></a>闭包垃圾回收策略</h5><p>闭包内存泄漏是由于闭包持有对外部变量的引用，导致这些变量无法被垃圾回收，从而造成内存泄漏。下面是一些解决闭包内存泄漏的方法：</p>
+<p><strong>1. 避免不必要的闭包：</strong> 尽量避免在不需要的情况下创建闭包。只有当确实需要保留状态或行为时，才应使用闭包。</p>
+<p><strong>2. 及时解除引用：</strong> 在不再需要闭包时，手动将闭包引用的外部变量赋值为<code>null</code>，从而解除对外部变量的引用，使其能够被垃圾回收。</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">createClosure</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="keyword">var</span> data = <span class="string">&quot;Some data&quot;</span>;</span><br><span class="line">  </span><br><span class="line">  <span class="comment">// 创建闭包</span></span><br><span class="line">  <span class="keyword">var</span> closure = <span class="keyword">function</span>(<span class="params"></span>) &#123;</span><br><span class="line">    <span class="variable language_">console</span>.<span class="title function_">log</span>(data);</span><br><span class="line">  &#125;;</span><br><span class="line">  </span><br><span class="line">  <span class="comment">// 在适当的时机解除引用</span></span><br><span class="line">  closure = <span class="literal">null</span>;</span><br><span class="line">  </span><br><span class="line">  <span class="keyword">return</span> closure;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
+
+<p><strong>3. 使用事件委托：</strong> 当处理事件监听器时，使用事件委托来避免每个元素都有一个闭包。将事件监听器绑定到父元素，通过事件冒泡捕获事件，这样只会创建一个闭包。</p>
+<p><strong>4. 使用块级作用域：</strong> 使用块级作用域（<code>let</code>、<code>const</code>）代替函数作用域（<code>var</code>），因为块级作用域在离开块后会自动解除引用。</p>
+<p><strong>5. 将闭包变量设为不可配置：</strong> 使用<code>Object.defineProperty</code>将闭包中的变量设置为不可配置、不可写，这样在某些情况下会帮助解除引用。</p>
+<p><strong>6. 使用模块化：</strong> 使用模块化的方式来组织代码，限制闭包的作用域，避免不必要的变量引用。</p>
+<p><strong>7. 使用垃圾回收工具：</strong> 使用现代的开发工具和调试工具来检测和诊断内存泄漏，例如 Chrome DevTools 的 Memory 面板。</p>
+<h4 id="作用域和作用域链（Scope-and-Scope-Chain）"><a href="#作用域和作用域链（Scope-and-Scope-Chain）" class="headerlink" title="作用域和作用域链（Scope and Scope Chain）"></a>作用域和作用域链（Scope and Scope Chain）</h4><p> 解释词法作用域、函数作用域、块级作用域和变量提升。描述作用域链的概念，以及变量查找的顺序。</p>
+<blockquote>
+<p><strong>词法作用域（Lexical Scope）：</strong><br>词法作用域是指变量的可见性和访问规则是在代码编写阶段就确定的，而不是在运行时确定的。JavaScript使用词法作用域来决定在何处查找变量。</p>
+<p><strong>函数作用域：</strong><br>函数作用域是指变量的可见性仅限于函数内部。在函数内部定义的变量对函数外部是不可见的，但函数内部可以访问外部作用域中的变量。</p>
+<p><strong>块级作用域：</strong><br>块级作用域是指变量的可见性仅限于包含变量声明的代码块内部（通常是由花括号 <code>&#123;&#125;</code> 包围的部分）。在ES6之前，JavaScript没有块级作用域，但通过<code>var</code>声明的变量会在整个函数作用域中生效。</p>
+<p><strong>变量提升：</strong><br>变量提升是指在代码执行前，JavaScript引擎会将变量的声明部分提升到作用域的顶部，但不会提升变量的赋值部分。这意味着你可以在变量声明之前访问变量，但值会是<code>undefined</code>。</p>
+<p><strong>作用域链的概念：</strong><br>作用域链是指由多个嵌套作用域构成的链式结构。每个作用域都保持一个对其父级作用域的引用，形成了一个作用域链。当访问一个变量时，JavaScript引擎首先在当前作用域中查找，如果找不到，它会向上一级作用域查找，依此类推，直到找到变量或到达全局作用域。</p>
+<p><strong>变量查找的顺序：</strong><br>当访问一个变量时，JavaScript引擎会按照以下顺序查找：</p>
+<ol>
+<li>首先，在当前作用域中查找变量。</li>
+<li>如果在当前作用域中找不到变量，则向上一级作用域查找，依此类推，直到找到变量或到达全局作用域。</li>
+<li>如果在全局作用域中仍然找不到变量，JavaScript会抛出一个<code>ReferenceError</code>错误。</li>
+</ol>
+<p>下面是一个示例，演示了词法作用域、函数作用域、块级作用域和变量提升的概念：</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">var</span> globalVar = <span class="string">&quot;Global&quot;</span>; <span class="comment">// 全局作用域</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">foo</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="keyword">var</span> functionVar = <span class="string">&quot;Function Scope&quot;</span>; <span class="comment">// 函数作用域</span></span><br><span class="line"></span><br><span class="line">  <span class="keyword">if</span> (<span class="literal">true</span>) &#123;</span><br><span class="line">    <span class="keyword">var</span> blockVar = <span class="string">&quot;Block Scope&quot;</span>; <span class="comment">// 块级作用域（在ES6之前没有）</span></span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(globalVar); <span class="comment">// 可访问</span></span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(functionVar); <span class="comment">// 可访问</span></span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(blockVar); <span class="comment">// 可访问（在ES6之前）</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="title function_">foo</span>();</span><br><span class="line"></span><br><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(globalVar); <span class="comment">// 可访问</span></span><br><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(functionVar); <span class="comment">// 不可访问</span></span><br><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(blockVar); <span class="comment">// 不可访问</span></span><br></pre></td></tr></table></figure></div>
+
+</blockquote>
+<h4 id="原型和原型链（Prototype-and-Prototype-Chain）"><a href="#原型和原型链（Prototype-and-Prototype-Chain）" class="headerlink" title="原型和原型链（Prototype and Prototype Chain）"></a>原型和原型链（Prototype and Prototype Chain）</h4><p> 详细介绍原型、构造函数、原型链和继承。解释原型继承和使用<code>prototype</code>和<code>__proto__</code>的区别。</p>
+<blockquote>
+<p><strong>原型（Prototype）：</strong></p>
+<p>原型是JavaScript中对象之间继承关系的基础。每个JavaScript对象都有一个原型对象，它包含了一些共享的属性和方法。对象可以通过原型链来访问原型对象中的属性和方法。原型关系是通过引用来建立的。</p>
+<p><strong>构造函数（Constructor）：</strong><br>构造函数是用于创建对象的函数，通常以大写字母开头，例如<code>Person</code>。当通过构造函数使用<code>new</code>关键字创建一个对象实例时，实例会自动继承构造函数的原型对象上的属性和方法。</p>
+<p><strong>原型链（Prototype Chain）：</strong><br>原型链是由一系列对象及其原型对象所组成的链式结构，用于属性和方法的查找。当访问一个对象的属性或方法时，JavaScript会从对象自身开始查找，如果找不到，则沿着原型链向上查找，直到找到属性或方法或者到达原型链的顶端（<code>Object.prototype</code>）。</p>
+<p><strong>继承：</strong><br>继承是指一个对象可以获得另一个对象的属性和方法，以实现代码的重用和组织。在JavaScript中，继承通过原型链来实现。子对象可以通过原型链访问父对象的属性和方法，实现了继承关系。</p>
+<p><strong>原型继承：</strong><br>原型继承是一种基于原型链的继承方式。一个对象可以通过将另一个对象设置为其原型，从而继承另一个对象的属性和方法。这样，子对象可以通过原型链访问父对象的属性和方法。</p>
+<p><strong>使用<code>prototype</code>和<code>__proto__</code>的区别：</strong></p>
+<ul>
+<li><p><code>prototype</code>：每个函数都有一个<code>prototype</code>属性，它指向一个对象，这个对象会成为通过该构造函数创建的实例的原型。通过在构造函数上设置原型属性，可以添加共享的属性和方法。这种方式用于定义实例的原型，实现方法的共享。</p>
+</li>
+<li><p><code>__proto__</code>：<code>__proto__</code>是每个对象都具有的属性，它指向对象的原型。通过<code>__proto__</code>可以访问和修改对象的原型。但是，应该尽量避免直接使用<code>__proto__</code>，因为它是非标准的属性，在某些情况下可能不受支持。</p>
+</li>
+</ul>
+<p>综上所述，原型、构造函数、原型链和继承是JavaScript中重要的概念，它们共同构成了对象之间的关系和继承机制。通过使用构造函数和原型，可以实现对象的属性和方法的共享和继承，从而使代码更加模块化和可维护。</p>
+</blockquote>
+<h4 id="this关键字"><a href="#this关键字" class="headerlink" title="this关键字"></a>this关键字</h4><p> 解释this在不同情境下的指向，包括普通函数、箭头函数、构造函数、事件处理函数等。理解this的动态绑定机制。</p>
+<blockquote>
+<p><code>this</code> 是 JavaScript 中一个非常重要的关键字，它指向当前函数执行的上下文对象。<code>this</code> 的指向在不同的情境下有不同的行为，下面解释了在不同情境下 <code>this</code> 的指向：</p>
+<ol>
+<li><p><strong>普通函数：</strong><br>在普通函数中，<code>this</code> 的指向取决于函数的调用方式。如果函数是作为普通函数调用，<code>this</code> 指向全局对象（在浏览器环境中是 <code>window</code> 对象）。但是在严格模式下，<code>this</code> 指向 <code>undefined</code>。</p>
+</li>
+<li><p><strong>箭头函数：</strong><br>箭头函数中的 <code>this</code> 是词法作用域中的 <code>this</code>，它不会被动态绑定，而是在函数定义时就确定了。箭头函数的 <code>this</code> 始终指向最近一层非箭头函数的上下文。这意味着箭头函数没有自己的 <code>this</code>，它继承外部作用域的 <code>this</code>。</p>
+</li>
+<li><p><strong>构造函数：</strong><br>在构造函数中，<code>this</code> 指向正在创建的新对象。当使用 <code>new</code> 关键字调用构造函数时，<code>this</code> 将绑定到新创建的对象实例。</p>
+</li>
+<li><p><strong>事件处理函数：</strong><br>在事件处理函数中，<code>this</code> 指向触发事件的元素（DOM 元素），这是一种常见的情况，比如点击事件处理函数中的 <code>this</code> 指向被点击的元素。</p>
+</li>
+<li><p><strong>方法调用：</strong><br>在对象方法中，<code>this</code> 指向调用方法的对象本身。这种情况下，<code>this</code> 通常用于访问对象的属性和方法。</p>
+</li>
+</ol>
+<p><strong>动态绑定机制：</strong><br><code>this</code> 的指向是动态绑定的，它在函数被调用时确定，而不是在函数定义时确定。这意味着 <code>this</code> 的指向可以根据函数的调用方式和上下文发生变化。</p>
+<p>在 JavaScript 中，函数的调用方式包括四种：函数调用、方法调用、构造函数调用和通过 <code>call</code>、<code>apply</code>、<code>bind</code> 方法进行调用。每种调用方式都会影响 <code>this</code> 的指向。</p>
+<p>理解 <code>this</code> 的指向和动态绑定机制对于编写正确且易于维护的 JavaScript 代码非常重要。掌握不同情境下 <code>this</code> 的行为可以帮助避免错误并更好地控制代码的执行逻辑。</p>
+</blockquote>
+<p><strong>1. 在全局作用域中：</strong></p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="variable language_">this</span>); <span class="comment">// 在浏览器中输出：Window 对象，在Node.js中输出：global 对象</span></span><br></pre></td></tr></table></figure></div>
+
+<p><strong>2. 作为函数调用：</strong></p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">myFunction</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="variable language_">this</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="title function_">myFunction</span>(); <span class="comment">// 在浏览器中输出：Window 对象，在Node.js中输出：global 对象（非严格模式下）</span></span><br></pre></td></tr></table></figure></div>
+
+<p><strong>3. 作为方法调用：</strong></p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">var</span> person = &#123;</span><br><span class="line">  <span class="attr">name</span>: <span class="string">&quot;Alice&quot;</span>,</span><br><span class="line">  <span class="attr">greet</span>: <span class="keyword">function</span>(<span class="params"></span>) &#123;</span><br><span class="line">    <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">`Hello, my name is <span class="subst">$&#123;<span class="variable language_">this</span>.name&#125;</span>`</span>);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line">person.<span class="title function_">greet</span>(); <span class="comment">// 输出：Hello, my name is Alice</span></span><br></pre></td></tr></table></figure></div>
+
+<p><strong>4. 使用<code>call</code>和<code>apply</code>方法显式指定<code>this</code>：</strong></p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">greet</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">`Hello, my name is <span class="subst">$&#123;<span class="variable language_">this</span>.name&#125;</span>`</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> person1 = &#123; <span class="attr">name</span>: <span class="string">&quot;Alice&quot;</span> &#125;;</span><br><span class="line"><span class="keyword">var</span> person2 = &#123; <span class="attr">name</span>: <span class="string">&quot;Bob&quot;</span> &#125;;</span><br><span class="line"></span><br><span class="line">greet.<span class="title function_">call</span>(person1); <span class="comment">// 输出：Hello, my name is Alice</span></span><br><span class="line">greet.<span class="title function_">apply</span>(person2); <span class="comment">// 输出：Hello, my name is Bob</span></span><br></pre></td></tr></table></figure></div>
+
+<blockquote>
+<p><code>call</code>、<code>apply</code>和<code>bind</code>是 JavaScript 中用于显式绑定函数中的<code>this</code>值的方法。它们在不同情况下提供了对函数的不同方式调用，以及指定函数内部<code>this</code>的能力。</p>
+<p><strong>1. <code>call</code>方法：</strong><br><code>call</code>方法用于调用函数，第一个参数是函数内部的<code>this</code>值，后面的参数是函数的参数列表。</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">greet</span>(<span class="params">message</span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">`<span class="subst">$&#123;message&#125;</span>, <span class="subst">$&#123;<span class="variable language_">this</span>.name&#125;</span>`</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> person = &#123; <span class="attr">name</span>: <span class="string">&quot;Alice&quot;</span> &#125;;</span><br><span class="line">greet.<span class="title function_">call</span>(person, <span class="string">&quot;Hello&quot;</span>); <span class="comment">// 输出：Hello, Alice</span></span><br></pre></td></tr></table></figure></div>
+
+<p><strong>2. <code>apply</code>方法：</strong><br><code>apply</code>方法与<code>call</code>类似，但是参数需要放在一个数组中传递。</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">greet</span>(<span class="params">message</span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">`<span class="subst">$&#123;message&#125;</span>, <span class="subst">$&#123;<span class="variable language_">this</span>.name&#125;</span>`</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> person = &#123; <span class="attr">name</span>: <span class="string">&quot;Bob&quot;</span> &#125;;</span><br><span class="line">greet.<span class="title function_">apply</span>(person, [<span class="string">&quot;Hi&quot;</span>]); <span class="comment">// 输出：Hi, Bob</span></span><br></pre></td></tr></table></figure></div>
+
+<p><strong>3. <code>bind</code>方法：</strong><br><code>bind</code>方法用于创建一个新的函数，并将其中的<code>this</code>绑定到指定的值，可以在稍后调用该函数。</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">greet</span>(<span class="params">message</span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">`<span class="subst">$&#123;message&#125;</span>, <span class="subst">$&#123;<span class="variable language_">this</span>.name&#125;</span>`</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> person = &#123; <span class="attr">name</span>: <span class="string">&quot;Charlie&quot;</span> &#125;;</span><br><span class="line"><span class="keyword">var</span> greetPerson = greet.<span class="title function_">bind</span>(person);</span><br><span class="line"><span class="title function_">greetPerson</span>(<span class="string">&quot;Hey&quot;</span>); <span class="comment">// 输出：Hey, Charlie</span></span><br></pre></td></tr></table></figure></div>
+
+<p>这些方法允许开发者显式地控制函数中<code>this</code>的值，以及提供参数调用函数。选择适当的方法取决于具体的使用情况和需求。</p>
+</blockquote>
+<p><strong>5. 作为构造函数调用：</strong></p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">Person</span>(<span class="params">name</span>) &#123;</span><br><span class="line">  <span class="variable language_">this</span>.<span class="property">name</span> = name;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="variable language_">this</span>); <span class="comment">// 输出：Person &#123; name: &#x27;Alice&#x27; &#125;</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> person = <span class="keyword">new</span> <span class="title class_">Person</span>(<span class="string">&quot;Alice&quot;</span>);</span><br></pre></td></tr></table></figure></div>
+
+<p><strong>6. 箭头函数中的<code>this</code>：</strong></p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">var</span> obj = &#123;</span><br><span class="line">  <span class="attr">func</span>: <span class="keyword">function</span>(<span class="params"></span>) &#123;</span><br><span class="line">    <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="variable language_">this</span>); <span class="comment">// 输出：&#123; func: [Function: func] &#125;</span></span><br><span class="line">    <span class="keyword">var</span> <span class="title function_">arrowFunc</span> = (<span class="params"></span>) =&gt; &#123;</span><br><span class="line">      <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="variable language_">this</span>); <span class="comment">// 输出：&#123; func: [Function: func] &#125;</span></span><br><span class="line">    &#125;;</span><br><span class="line">    <span class="title function_">arrowFunc</span>();</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line">obj.<span class="title function_">func</span>();</span><br></pre></td></tr></table></figure></div>
+
+<p><strong><code>this</code>的原理：</strong><br><code>this</code>的值由函数的调用方式决定，而不是函数的定义方式。以下是一些原则：</p>
+<ol>
+<li><p><strong>默认绑定：</strong> 在全局作用域中，<code>this</code>指向全局对象（浏览器中是<code>Window</code>，Node.js中是<code>global</code>）。在普通函数中，<code>this</code>同样指向全局对象（非严格模式下）。</p>
+</li>
+<li><p><strong>隐式绑定：</strong> 当函数作为对象的方法调用时，<code>this</code>指向调用该函数的对象。</p>
+</li>
+<li><p><strong>显式绑定：</strong> 使用<code>call</code>、<code>apply</code>、<code>bind</code>方法，可以显式指定函数中的<code>this</code>。</p>
+</li>
+<li><p><strong>构造函数中的绑定：</strong> 当使用<code>new</code>关键字调用构造函数创建对象时，<code>this</code>会绑定到新创建的对象。</p>
+</li>
+<li><p><strong>箭头函数中的绑定：</strong> 箭头函数中的<code>this</code>由外围（定义箭头函数的函数或作用域）的<code>this</code>决定，而不是运行时调用的对象。</p>
+</li>
+</ol>
+<p>理解这些原则有助于更好地理解<code>this</code>的行为，避免出现意外的结果。</p>
+<h4 id="异步编程"><a href="#异步编程" class="headerlink" title="异步编程"></a>异步编程</h4><p>解释回调函数、Promise、async&#x2F;await、Generator等异步编程模式。了解事件循环（Event Loop）和宏任务与微任务的区别。</p>
+<blockquote>
+<p>异步编程是指在程序执行过程中，某些操作不会阻塞程序的执行，而是在后台执行，以提高程序的效率和响应性。以下是几种常见的异步编程模式：</p>
+<ol>
+<li><p><strong>回调函数：</strong> 回调函数是一种通过将函数作为参数传递给另一个函数，在异步操作完成后执行的方式。经典的回调地狱问题是多个嵌套的回调函数难以管理和维护。</p>
+</li>
+<li><p><strong>Promise：</strong> Promise 是一种用于处理异步操作的对象，它表示一个可能完成或失败的操作，并提供了更加结构化的异步编程方式。通过 <code>then</code> 方法可以在操作完成后执行成功或失败的回调。</p>
+</li>
+<li><p><strong>async&#x2F;await：</strong> <code>async</code> 函数是异步操作的新的语法糖，它可以让你像编写同步代码一样处理异步操作。<code>await</code> 关键字用于等待一个 Promise 完成，并返回结果。</p>
+</li>
+<li><p><strong>Generator：</strong> Generator 是一种特殊类型的函数，可以在运行中暂停并在需要时恢复执行。通过 <code>yield</code> 关键字可以暂停函数的执行，而通过迭代器可以在每次调用 <code>next</code> 时恢复执行。</p>
+</li>
+</ol>
+<p><strong>事件循环（Event Loop）：</strong><br>事件循环是 JavaScript 异步编程的基础机制，它允许程序在单线程中处理多个任务。JavaScript 引擎中存在一个事件循环，它会不断地从任务队列中获取任务并执行。</p>
+<p><strong>宏任务与微任务的区别：</strong><br>事件循环中的任务分为两种类型：宏任务（macrotask）和微任务（microtask）。</p>
+<ul>
+<li><p><strong>宏任务（macrotask）：</strong> 宏任务包括整体代码块、setTimeout、setInterval、I&#x2F;O 操作等。宏任务会在事件循环的不同阶段执行，它们会被排队并在主线程空闲时执行。</p>
+</li>
+<li><p><strong>微任务（microtask）：</strong> 微任务包括 Promise 的回调、MutationObserver 和 process.nextTick 等。微任务会在宏任务执行完毕后立即执行，在事件循环的当前阶段中执行，不会被推迟。</p>
+</li>
+</ul>
+<p>事件循环的过程是这样的：首先执行当前宏任务，然后检查是否有微任务需要执行，如果有，执行微任务直到清空微任务队列，然后继续执行下一个宏任务，以此类推。</p>
+<p>总结：异步编程模式有多种，它们用于处理非阻塞的操作，以提高程序的性能和响应性。事件循环是 JavaScript 异步编程的核心机制，它通过宏任务和微任务的处理，实现了单线程环境下的多任务处理。</p>
+</blockquote>
+<h4 id="Event-Bubbling和Event-Capturing"><a href="#Event-Bubbling和Event-Capturing" class="headerlink" title="Event Bubbling和Event Capturing"></a>Event Bubbling和Event Capturing</h4><p> 解释事件冒泡和事件捕获的机制。了解如何阻止事件传播和取消默认行为。</p>
+<blockquote>
+<p>事件冒泡（Event Bubbling）和事件捕获（Event Capturing）是指在DOM结构中，当一个元素上的事件被触发时，事件会沿着其父级元素一直传播或捕获的过程。</p>
+<p><strong>事件冒泡机制：</strong><br>事件冒泡是指当一个元素上的事件被触发时，事件会从内向外依次传播到父元素，直至达到文档的根元素。比如，当点击一个按钮时，按钮的点击事件会首先触发按钮自身的事件处理函数，然后逐级向上触发父级元素的事件处理函数。</p>
+<p><strong>事件捕获机制：</strong><br>事件捕获是指当一个元素上的事件被触发时，事件会从文档根元素开始，沿着DOM树从外向内传播，直到达到事件触发元素。比如，当点击一个按钮时，事件会首先从文档根元素开始捕获，逐级向下，直到达到按钮元素，然后触发按钮的事件处理函数。</p>
+<p><strong>阻止事件传播和取消默认行为：</strong></p>
+<ol>
+<li><p><strong>阻止事件传播（Stop Propagation）：</strong> 可以使用 <code>event.stopPropagation()</code> 方法阻止事件继续传播，无论是冒泡阶段还是捕获阶段。这会阻止其他祖先或子孙元素上的事件处理函数被触发。</p>
+</li>
+<li><p><strong>取消默认行为（Prevent Default）：</strong> 可以使用 <code>event.preventDefault()</code> 方法取消浏览器默认的事件行为。例如，点击链接时阻止页面跳转、在表单提交时阻止页面刷新等。</p>
+</li>
+</ol>
+<p>示例代码如下：</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="variable language_">document</span>.<span class="title function_">getElementById</span>(<span class="string">&quot;parent&quot;</span>).<span class="title function_">addEventListener</span>(<span class="string">&quot;click&quot;</span>, <span class="keyword">function</span>(<span class="params">event</span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&quot;Parent clicked&quot;</span>);</span><br><span class="line">  <span class="comment">// event.stopPropagation(); // 阻止事件冒泡</span></span><br><span class="line">&#125;, <span class="literal">true</span>); <span class="comment">// 第三个参数表示在捕获阶段触发事件</span></span><br><span class="line"></span><br><span class="line"><span class="variable language_">document</span>.<span class="title function_">getElementById</span>(<span class="string">&quot;child&quot;</span>).<span class="title function_">addEventListener</span>(<span class="string">&quot;click&quot;</span>, <span class="keyword">function</span>(<span class="params">event</span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&quot;Child clicked&quot;</span>);</span><br><span class="line">  <span class="comment">// event.stopPropagation(); // 阻止事件冒泡</span></span><br><span class="line">  <span class="comment">// event.preventDefault(); // 取消默认行为</span></span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure></div>
+
+<p>通过理解事件冒泡和捕获机制，以及如何阻止事件传播和取消默认行为，你可以更好地控制和处理DOM元素上的事件，实现更复杂的交互效果。</p>
+</blockquote>
+<h4 id="DOM操作"><a href="#DOM操作" class="headerlink" title="DOM操作"></a>DOM操作</h4><p> 解释如何通过JavaScript操作DOM元素，包括查找元素、修改属性、添加&#x2F;删除元素等。注意性能问题和重绘回流。</p>
+<blockquote>
+<p>通过JavaScript操作DOM元素是实现动态网页交互的重要部分。以下是一些常见的DOM操作以及与性能相关的注意事项：</p>
+<p><strong>查找元素：</strong></p>
+<ol>
+<li><strong>getElementById：</strong> 使用元素的ID获取一个单一元素。</li>
+<li><strong>querySelector：</strong> 使用CSS选择器获取匹配的第一个元素。</li>
+<li><strong>querySelectorAll：</strong> 使用CSS选择器获取匹配的所有元素。</li>
+<li><strong>getElementsByClassName：</strong> 使用类名获取匹配的所有元素。</li>
+<li><strong>getElementsByTagName：</strong> 使用标签名获取匹配的所有元素。</li>
+</ol>
+<p><strong>修改属性：</strong></p>
+<ol>
+<li><strong>getAttribute &#x2F; setAttribute：</strong> 获取或设置元素的属性。</li>
+<li><strong>classList：</strong> 使用classList对象修改元素的类名，可以添加、删除、切换类名。</li>
+</ol>
+<p><strong>添加&#x2F;删除元素：</strong></p>
+<ol>
+<li><strong>createElement：</strong> 创建新的元素节点。</li>
+<li><strong>appendChild &#x2F; insertBefore：</strong> 添加新元素到现有元素中。</li>
+<li><strong>removeChild：</strong> 从父元素中移除子元素。</li>
+</ol>
+<p><strong>性能问题和重绘回流：</strong></p>
+<ol>
+<li><p><strong>重绘（Repainting）：</strong> 当元素的样式属性（如颜色、背景）发生变化时，浏览器需要重新绘制元素，这称为重绘。重绘不一定导致布局的改变。</p>
+</li>
+<li><p><strong>回流（Reflow）：</strong> 当元素的尺寸、位置或布局发生变化时，浏览器需要重新计算布局和绘制，这称为回流。回流会导致页面重新排列，影响性能。</p>
+</li>
+</ol>
+<p><strong>性能优化建议：</strong></p>
+<ol>
+<li><p><strong>批量处理：</strong> 尽量减少DOM操作，最好通过文档片段（DocumentFragment）一次性添加多个元素，减少回流次数。</p>
+</li>
+<li><p><strong>避免频繁访问样式和布局属性：</strong> 避免在循环中频繁读取布局属性，这可能触发多次回流。</p>
+</li>
+<li><p><strong>缓存DOM查询：</strong> 将查找的DOM元素存储在变量中，避免重复查找。</p>
+</li>
+<li><p><strong>使用classList代替直接修改className：</strong> 使用classList可以更高效地操作类名。</p>
+</li>
+<li><p><strong>避免强制同步布局：</strong> 获取某些属性（如offsetTop、offsetLeft、offsetWidth、offsetHeight）会触发回流，尽量避免在频繁变动中使用。</p>
+</li>
+<li><p><strong>使用requestAnimationFrame：</strong> 使用<code>requestAnimationFrame</code>可以优化动画等频繁的DOM操作，使它们在浏览器的下一帧绘制前执行。</p>
+</li>
+</ol>
+<p>理解DOM操作和性能问题是开发高性能网页的关键。通过合理优化DOM操作，可以减少页面的回流和重绘，提升用户体验。</p>
+</blockquote>
+<h4 id="浏览器渲染"><a href="#浏览器渲染" class="headerlink" title="浏览器渲染"></a>浏览器渲染</h4><p>浏览器的渲染过程包括多个阶段，涵盖从接收HTML文档到展示可见内容的一系列步骤。以下是浏览器的详细渲染步骤：</p>
+<p><strong>1. 解析HTML：</strong> 浏览器解析HTML文档，构建DOM（文档对象模型）树，表示页面的结构和元素关系。</p>
+<p><strong>2. 构建DOM树：</strong> 浏览器根据HTML标记创建DOM树，每个标签都对应DOM树中的一个节点。</p>
+<p><strong>3. 构建CSSOM（CSS对象模型）树：</strong> 浏览器解析CSS样式，创建CSSOM树，表示样式规则的层叠关系。</p>
+<p><strong>4. 合并DOM和CSSOM：</strong> 浏览器将DOM树和CSSOM树合并成一个Render树，Render树描述了页面的可见内容、布局和样式。</p>
+<p><strong>5. 布局（Layout）：</strong> 浏览器计算出每个元素在屏幕上的位置和大小，生成布局（盒子模型）信息。</p>
+<p><strong>6. 绘制（Paint）：</strong> 浏览器将页面的可见部分绘制在内存中，生成位图。</p>
+<p><strong>7. 栅格化（Rasterization）：</strong> 将绘制好的位图转换为图像块，以便渲染到屏幕上。</p>
+<p><strong>8. 合成（Composite）：</strong> 浏览器将多个图像块合成为最终的屏幕图像，按照正确的层次和顺序进行合成。</p>
+<p><strong>9. 渲染到屏幕：</strong> 最终的屏幕图像渲染到显示器上，用户可以看到页面内容。</p>
+<p>值得注意的是，上述步骤在实际渲染过程中可能会有优化和并行处理。例如，浏览器可能会对DOM树和CSSOM树的解析进行异步操作，以提高页面加载速度。</p>
+<p>整个渲染过程是一个复杂的流程，各个阶段的优化都会影响到页面的渲染性能和用户体验。理解浏览器的渲染步骤有助于开发者优化网页性能，提高用户满意度。</p>
+<h4 id="内存管理和垃圾回收"><a href="#内存管理和垃圾回收" class="headerlink" title="内存管理和垃圾回收"></a>内存管理和垃圾回收</h4><p> 了解JavaScript中的垃圾回收机制，如何管理内存、避免内存泄漏，以及手动解除引用的技巧。</p>
+<blockquote>
+<p>JavaScript中的垃圾回收机制是自动管理内存的过程，它会检测不再使用的变量和对象，并释放其占用的内存。以下是关于垃圾回收、内存管理、避免内存泄漏和手动解除引用的详细解释：</p>
+<p><strong>垃圾回收机制：</strong><br>JavaScript的垃圾回收机制主要依赖于两个主要的策略：标记清除和引用计数。</p>
+<ul>
+<li><p><strong>标记清除（Mark-and-Sweep）：</strong> 垃圾回收器会定期标记所有在内存中的变量，然后标记所有仍然可访问的变量。未被标记的变量被视为垃圾，可以被清除。</p>
+</li>
+<li><p><strong>引用计数：</strong> 引用计数是一种简单的垃圾回收方法，它跟踪每个对象被引用的次数。当一个对象的引用计数为零时，即没有变量引用它，那么它就是不可访问的，可以被回收。</p>
+</li>
+</ul>
+<p><strong>内存管理和避免内存泄漏：</strong></p>
+<ul>
+<li><p><strong>正确使用变量作用域：</strong> 确保变量只在需要的范围内存在，避免变量持续存在于不需要的作用域中。</p>
+</li>
+<li><p><strong>显式解除引用：</strong> 当不再需要一个对象时，将其引用设置为<code>null</code>，这样垃圾回收器可以正确地判定它不再被引用。</p>
+</li>
+<li><p><strong>定时清除计时器：</strong> 使用<code>setTimeout</code>或<code>setInterval</code>创建的计时器可能导致内存泄漏。确保在不需要计时器时及时清除它们。</p>
+</li>
+<li><p><strong>避免循环引用：</strong> 循环引用是两个或多个对象相互引用，而没有任何外部引用。确保在不需要的情况下断开循环引用。</p>
+</li>
+</ul>
+<p><strong>手动解除引用的技巧：</strong><br>手动解除引用是指在适当的时候将对象的引用设置为<code>null</code>，以确保垃圾回收器可以回收不再使用的对象。以下是一些手动解除引用的技巧：</p>
+<ol>
+<li><p><strong>退出函数时解除引用：</strong> 在函数内部创建的局部变量，在函数退出时会自动解除引用。确保不会在函数外部继续引用这些局部变量。</p>
+</li>
+<li><p><strong>清除事件监听器：</strong> 当不再需要一个元素的事件监听器时，确保将其移除，以避免元素和监听器之间的循环引用。</p>
+</li>
+<li><p><strong>清除计时器：</strong> 使用<code>clearTimeout</code>或<code>clearInterval</code>清除不再需要的计时器，以避免内存泄漏。</p>
+</li>
+<li><p><strong>清除闭包：</strong> 如果一个函数形成了闭包，确保在不再需要时解除对其变量的引用，以避免造成循环引用。</p>
+</li>
+</ol>
+<p>通过合理的内存管理和手动解除引用，可以减少内存泄漏问题，确保程序在长时间运行中仍然具有良好的性能。</p>
+</blockquote>
+<h4 id="模块化"><a href="#模块化" class="headerlink" title="模块化"></a>模块化</h4><p> 介绍模块化的概念、CommonJS、ES6模块和导入&#x2F;导出的用法。了解模块加载器和打包工具（如Webpack）。</p>
+<blockquote>
+<p><strong>模块化的概念：</strong><br>模块化是一种将程序分割成独立、可复用的代码块的编程方法。它有助于将代码分解为更小的部分，提高可维护性、可读性和复用性。模块化还有助于隔离命名空间，避免全局变量污染，减少命名冲突。</p>
+<p><strong>CommonJS：</strong><br>CommonJS是一种用于在服务器端和本地环境中实现模块化的规范。它定义了<code>require</code>和<code>module.exports</code>来导入和导出模块。在Node.js中，CommonJS是默认的模块系统。</p>
+<p><strong>ES6模块：</strong><br>ES6（ECMAScript 2015）引入了一种原生的模块系统，支持在浏览器环境中使用模块化。ES6模块使用<code>import</code>和<code>export</code>语法来导入和导出模块。它可以在现代浏览器中直接使用，也可以通过转译工具（如Babel）在旧浏览器中使用。</p>
+<p><strong>导入&#x2F;导出的用法：</strong><br>在CommonJS和ES6模块中，导入和导出模块的方式略有不同：</p>
+<p><strong>CommonJS：</strong></p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="comment">// 导出模块</span></span><br><span class="line"><span class="variable language_">module</span>.<span class="property">exports</span> = &#123;</span><br><span class="line">  <span class="attr">key</span>: value</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 导入模块</span></span><br><span class="line"><span class="keyword">const</span> <span class="variable language_">module</span> = <span class="built_in">require</span>(<span class="string">&#x27;./modulePath&#x27;</span>);</span><br></pre></td></tr></table></figure></div>
+
+<p><strong>ES6模块：</strong></p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="comment">// 导出模块</span></span><br><span class="line"><span class="keyword">export</span> <span class="keyword">const</span> key = value;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 导入模块</span></span><br><span class="line"><span class="keyword">import</span> &#123; key &#125; <span class="keyword">from</span> <span class="string">&#x27;./modulePath&#x27;</span>;</span><br></pre></td></tr></table></figure></div>
+
+<p><strong>模块加载器和打包工具（如Webpack）：</strong><br>模块加载器是用于在浏览器环境中加载模块的工具，它可以将模块的依赖关系和导入关系解析成可执行的代码。常见的模块加载器包括RequireJS和SystemJS。</p>
+<p>打包工具（如Webpack）是用于将多个模块打包成一个或多个文件的工具。它可以自动解析模块之间的依赖关系，并生成最终的代码包。Webpack还提供了许多功能，如代码分割、压缩、文件处理等，以优化前端项目的性能和开发流程。</p>
+<p>综上所述，模块化是现代编程中的重要概念，通过将代码分割成模块，可以提高代码的可维护性和可读性。不同的模块化规范和工具可以帮助开发者更好地组织和管理项目代码。</p>
+</blockquote>
+<h4 id="闭包、高阶函数和函数式编程"><a href="#闭包、高阶函数和函数式编程" class="headerlink" title="闭包、高阶函数和函数式编程"></a>闭包、高阶函数和函数式编程</h4><p> 解释高阶函数、柯里化、偏函数等概念。掌握函数式编程的基本思想和应用。</p>
+<blockquote>
+<p><strong>高阶函数：</strong><br>高阶函数是指接受一个或多个函数作为参数，并&#x2F;或返回一个函数作为结果的函数。它们可以用于将函数抽象出来，使代码更具可复用性和灵活性。常见的高阶函数包括<code>map</code>、<code>filter</code>、<code>reduce</code>等。下面是一个简单的例子：</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="comment">// 高阶函数：接受函数作为参数</span></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">applyOperation</span>(<span class="params">value, operation</span>) &#123;</span><br><span class="line">  <span class="keyword">return</span> <span class="title function_">operation</span>(value);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">square</span>(<span class="params">x</span>) &#123;</span><br><span class="line">  <span class="keyword">return</span> x * x;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">double</span>(<span class="params">x</span>) &#123;</span><br><span class="line">  <span class="keyword">return</span> x * <span class="number">2</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="title function_">applyOperation</span>(<span class="number">5</span>, square)); <span class="comment">// 输出：25</span></span><br><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="title function_">applyOperation</span>(<span class="number">3</span>, double)); <span class="comment">// 输出：6</span></span><br></pre></td></tr></table></figure></div>
+
+
+
+<p><strong>柯里化（Currying）：</strong><br>柯里化是将接受多个参数的函数转换为一系列只接受一个参数的函数的过程。柯里化可以使函数的组合更加灵活，可以逐步传递参数，更好地实现函数的复用。下面是一个例子：</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="comment">// 常规函数</span></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">add</span>(<span class="params">x, y</span>) &#123;</span><br><span class="line">  <span class="keyword">return</span> x + y;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 柯里化函数</span></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">curriedAdd</span>(<span class="params">x</span>) &#123;</span><br><span class="line">  <span class="keyword">return</span> <span class="keyword">function</span>(<span class="params">y</span>) &#123;</span><br><span class="line">    <span class="keyword">return</span> x + y;</span><br><span class="line">  &#125;;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> add5 = <span class="title function_">curriedAdd</span>(<span class="number">5</span>);</span><br><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="title function_">add5</span>(<span class="number">3</span>)); <span class="comment">// 输出：8</span></span><br></pre></td></tr></table></figure></div>
+
+
+
+<p><strong>偏函数：</strong><br>偏函数是指通过固定部分参数来创建一个新的函数。它可以将一个多参数函数转化为一个接受较少参数的函数。这在部分参数固定的情况下非常有用，减少了重复代码。下面是一个例子：</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="comment">// 常规函数</span></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">multiply</span>(<span class="params">x, y</span>) &#123;</span><br><span class="line">  <span class="keyword">return</span> x * y;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 偏函数</span></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">partial</span>(<span class="params">fn, x</span>) &#123;</span><br><span class="line">  <span class="keyword">return</span> <span class="keyword">function</span>(<span class="params">y</span>) &#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="title function_">fn</span>(x, y);</span><br><span class="line">  &#125;;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> double = <span class="title function_">partial</span>(multiply, <span class="number">2</span>);</span><br><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="title function_">double</span>(<span class="number">5</span>)); <span class="comment">// 输出：10</span></span><br></pre></td></tr></table></figure></div>
+
+</blockquote>
+<h4 id="类型转换和比较"><a href="#类型转换和比较" class="headerlink" title="类型转换和比较"></a>类型转换和比较</h4><p> 解释强制类型转换、隐式类型转换、全等运算符和相等运算符的区别。理解JavaScript的数据类型。</p>
+<blockquote>
+<p><strong>强制类型转换：</strong><br>强制类型转换是将一个数据类型转换为另一个数据类型的过程，通常由开发者显式地执行。在JavaScript中，可以使用函数（如<code>Number()</code>、<code>String()</code>、<code>Boolean()</code>）来进行强制类型转换。</p>
+<p><strong>隐式类型转换：</strong><br>隐式类型转换是在操作中自动发生的类型转换，通常由JavaScript引擎根据上下文和操作符自动执行。例如，当使用不同类型的值进行加法运算时，JavaScript会隐式地将它们转换为相同的类型再执行操作。</p>
+<p><strong>全等运算符（<code>===</code>）和相等运算符（<code>==</code>）的区别：</strong></p>
+<ul>
+<li><p><strong>全等运算符（&#x3D;&#x3D;&#x3D;）：</strong> 它比较两个值是否相等，不仅比较值本身，还比较数据类型。只有在值和数据类型都相等时，全等运算符返回<code>true</code>。</p>
+</li>
+<li><p><strong>相等运算符（&#x3D;&#x3D;）：</strong> 它也比较两个值是否相等，但在比较之前会进行隐式类型转换。它会尝试将操作数转换为相同的类型，然后再比较值。因此，可能会导致一些意外的结果，例如不同类型的值被转换为相同的类型后看起来相等。</p>
+</li>
+</ul>
+<p><strong>JavaScript的数据类型：</strong><br>JavaScript具有多种数据类型，可以分为两大类：基本数据类型（Primitive Types）和引用数据类型（Reference Types）。</p>
+<blockquote>
+<p><strong>判断<code>null</code>的类型</strong></p>
+<p>在JavaScript中，可以使用<code>typeof</code>操作符来判断变量的类型。然而，<code>typeof</code>操作符对于<code>null</code>的返回结果可能会让人感到困惑，因为它返回的是<code>&quot;object&quot;</code>，而不是<code>&quot;null&quot;</code>。这是一个历史遗留问题。</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">var</span> value = <span class="literal">null</span>;</span><br><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="keyword">typeof</span> value); <span class="comment">// 输出：&quot;object&quot;</span></span><br></pre></td></tr></table></figure></div>
+
+<p>如果你需要更准确地判断变量是否为<code>null</code>，可以使用以下方法：</p>
+<p><strong>1. 使用严格相等（&#x3D;&#x3D;&#x3D;）：</strong></p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">var</span> value = <span class="literal">null</span>;</span><br><span class="line"><span class="keyword">if</span> (value === <span class="literal">null</span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&quot;Value is null&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
+
+<p><strong>2. 使用isNull函数（自定义或使用第三方库）：</strong></p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">isNull</span>(<span class="params">value</span>) &#123;</span><br><span class="line">  <span class="keyword">return</span> value === <span class="literal">null</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> value = <span class="literal">null</span>;</span><br><span class="line"><span class="keyword">if</span> (<span class="title function_">isNull</span>(value)) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&quot;Value is null&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
+
+<p><strong>3. 使用nullish判断（??）：</strong> 如果你想检查一个值是否为<code>null</code>或<code>undefined</code>，可以使用<code>??</code>操作符。</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">var</span> value = <span class="literal">null</span>;</span><br><span class="line"><span class="keyword">if</span> (value ?? <span class="string">&quot;default value&quot;</span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&quot;Value is not null or undefined&quot;</span>);</span><br><span class="line">&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&quot;Value is null or undefined&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
+
+<p>总之，尽管<code>typeof</code>操作符对于<code>null</code>的结果可能会有点令人困惑，但你可以使用严格相等、自定义函数或<code>??</code>操作符来更准确地判断一个值是否为<code>null</code>。</p>
+</blockquote>
+<p><strong>基本数据类型：</strong></p>
+<ol>
+<li><strong>Number：</strong> 表示数字，包括整数和浮点数。</li>
+<li><strong>String：</strong> 表示字符串，由一系列字符组成。</li>
+<li><strong>Boolean：</strong> 表示布尔值，只有两个值：<code>true</code>和<code>false</code>。</li>
+<li><strong>Null：</strong> 表示空值。</li>
+<li><strong>Undefined：</strong> 表示未定义的值。</li>
+<li><strong>Symbol（ES6新增）：</strong> 表示唯一的、不可变的值。</li>
+</ol>
+<p><strong>引用数据类型：</strong></p>
+<ol>
+<li><strong>Object：</strong> 表示对象，是一种键值对的集合。</li>
+<li><strong>Array：</strong> 表示数组，可以存储多个值。</li>
+<li><strong>Function：</strong> 表示函数。</li>
+<li><strong>Date：</strong> 表示日期和时间。</li>
+<li><strong>RegExp：</strong> 表示正则表达式。</li>
+</ol>
+</blockquote>
+<h4 id="跨域问题"><a href="#跨域问题" class="headerlink" title="跨域问题"></a>跨域问题</h4><p> 解释浏览器的同源策略、JSONP、CORS、代理等跨域解决方案。</p>
+<blockquote>
+<p><strong>同源策略：</strong><br>同源策略是浏览器的一种安全策略，它限制了一个页面从一个源加载的文档或脚本如何与来自其他源的资源进行交互。同源是指协议、域名和端口都相同。</p>
+<p><strong>JSONP（JSON with Padding）：</strong><br>JSONP是一种解决跨域访问的方法，它利用<code>&lt;script&gt;</code>标签的跨域能力来实现。通过动态创建<code>&lt;script&gt;</code>标签，将要获取的数据包装在一个回调函数中，让服务器返回调用该回调函数的脚本，从而实现跨域请求。</p>
+<p><strong>CORS（跨源资源共享）：</strong><br>CORS是一种官方支持的跨域解决方案。它通过在HTTP头部添加一些特定的头字段来允许服务器声明哪些来源被允许访问资源。前端发起跨域请求时，浏览器会自动发送CORS预检请求，如果服务器返回合适的CORS头部，浏览器允许跨域访问。</p>
+<p><strong>代理：</strong><br>代理是一种通过在同源服务器上创建一个中间层来转发请求和响应的方法。前端通过访问同源服务器，然后由服务器代理请求真正的目标服务器，再将响应返回给前端，实现跨域访问。</p>
+<p>这些跨域解决方案各有优缺点：</p>
+<ul>
+<li><strong>JSONP：</strong> 适用于GET请求，安全性较差，只能实现一些简单的跨域需求。</li>
+<li><strong>CORS：</strong> 支持各种HTTP请求，更加安全可靠，但需要服务器端配合设置CORS头部。</li>
+<li><strong>代理：</strong> 适用于所有请求，但需要同源服务器支持和维护。</li>
+</ul>
+<p>选择合适的跨域解决方案取决于项目的需求和实际情况。</p>
+</blockquote>
+<h4 id="面向对象编程"><a href="#面向对象编程" class="headerlink" title="面向对象编程"></a>面向对象编程</h4><p> 解释JavaScript中的面向对象特性，如对象、类、构造函数、继承等。</p>
+<blockquote>
+<p>JavaScript是一门基于原型的面向对象编程语言，它的面向对象特性包括以下几个重要概念：</p>
+<p><strong>1. 对象：</strong> 对象是JavaScript中的基本数据结构，可以存储属性和方法。属性可以是基本类型或其他对象，方法是一组可以被调用的函数。对象是按照键值对的方式组织属性和方法的。</p>
+<p><strong>2. 构造函数：</strong> 构造函数是用于创建对象的特殊函数，通过<code>new</code>关键字调用。构造函数可以被看作是创建对象的蓝图，它定义了对象的属性和方法。</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">Person</span>(<span class="params">name, age</span>) &#123;</span><br><span class="line">  <span class="variable language_">this</span>.<span class="property">name</span> = name;</span><br><span class="line">  <span class="variable language_">this</span>.<span class="property">age</span> = age;</span><br><span class="line">  <span class="variable language_">this</span>.<span class="property">sayHello</span> = <span class="keyword">function</span>(<span class="params"></span>) &#123;</span><br><span class="line">    <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">`Hello, my name is <span class="subst">$&#123;<span class="variable language_">this</span>.name&#125;</span>`</span>);</span><br><span class="line">  &#125;;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> person1 = <span class="keyword">new</span> <span class="title class_">Person</span>(<span class="string">&quot;Alice&quot;</span>, <span class="number">25</span>);</span><br><span class="line"><span class="keyword">const</span> person2 = <span class="keyword">new</span> <span class="title class_">Person</span>(<span class="string">&quot;Bob&quot;</span>, <span class="number">30</span>);</span><br><span class="line"></span><br><span class="line">person1.<span class="title function_">sayHello</span>(); <span class="comment">// 输出：Hello, my name is Alice</span></span><br><span class="line">person2.<span class="title function_">sayHello</span>(); <span class="comment">// 输出：Hello, my name is Bob</span></span><br></pre></td></tr></table></figure></div>
+
+<p><strong>3. 原型（Prototype）：</strong> 每个JavaScript对象都有一个原型对象，它允许对象继承属性和方法。构造函数的<code>prototype</code>属性指向原型对象，而对象通过<code>__proto__</code>属性访问原型。</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">Dog</span>(<span class="params">name</span>) &#123;</span><br><span class="line">  <span class="variable language_">this</span>.<span class="property">name</span> = name;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="title class_">Dog</span>.<span class="property"><span class="keyword">prototype</span></span>.<span class="property">bark</span> = <span class="keyword">function</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">`<span class="subst">$&#123;<span class="variable language_">this</span>.name&#125;</span> is barking`</span>);</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> dog1 = <span class="keyword">new</span> <span class="title class_">Dog</span>(<span class="string">&quot;Buddy&quot;</span>);</span><br><span class="line">dog1.<span class="title function_">bark</span>(); <span class="comment">// 输出：Buddy is barking</span></span><br></pre></td></tr></table></figure></div>
+
+<p><strong>4. 继承：</strong> 通过原型链，JavaScript实现了原型继承。一个对象可以从另一个对象继承属性和方法。子类对象的原型指向父类对象，从而实现继承。</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">Student</span>(<span class="params">name, grade</span>) &#123;</span><br><span class="line">  <span class="variable language_">this</span>.<span class="property">name</span> = name;</span><br><span class="line">  <span class="variable language_">this</span>.<span class="property">grade</span> = grade;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="title class_">Student</span>.<span class="property"><span class="keyword">prototype</span></span> = <span class="title class_">Object</span>.<span class="title function_">create</span>(<span class="title class_">Person</span>.<span class="property"><span class="keyword">prototype</span></span>);</span><br><span class="line"><span class="title class_">Student</span>.<span class="property"><span class="keyword">prototype</span></span>.<span class="property">constructor</span> = <span class="title class_">Student</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> student1 = <span class="keyword">new</span> <span class="title class_">Student</span>(<span class="string">&quot;Eva&quot;</span>, <span class="number">5</span>);</span><br><span class="line">student1.<span class="title function_">sayHello</span>(); <span class="comment">// 输出：Hello, my name is Eva</span></span><br></pre></td></tr></table></figure></div>
+
+<p>JavaScript的面向对象特性基于原型机制，它的灵活性和动态性使得对象可以在运行时进行扩展和修改。虽然与传统类和继承的面向对象语言有些不同，但JavaScript的面向对象编程是其重要的编程范式之一。</p>
+</blockquote>
+<h4 id="定时器和事件循环"><a href="#定时器和事件循环" class="headerlink" title="定时器和事件循环"></a>定时器和事件循环</h4><p> 解释<code>setTimeout</code>、<code>setInterval</code>以及<code>requestAnimationFrame</code>的使用，理解事件循环的机制。</p>
+<blockquote>
+<p><strong><code>setTimeout</code>和<code>setInterval</code>的使用：</strong></p>
+<p>这两个函数都是用于在一段时间后执行代码或重复执行代码。</p>
+<ol>
+<li><p><strong><code>setTimeout</code>：</strong></p>
+<ul>
+<li><code>setTimeout</code>函数用于在一定时间后执行一次指定的函数。</li>
+<li>语法：<code>setTimeout(function, delay)</code></li>
+<li>第一个参数是要执行的函数，第二个参数是延迟的毫秒数。</li>
+<li>示例：<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="built_in">setTimeout</span>(<span class="keyword">function</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&quot;Delayed log after 1000ms&quot;</span>);</span><br><span class="line">&#125;, <span class="number">1000</span>);</span><br></pre></td></tr></table></figure></div></li>
+</ul>
+</li>
+<li><p><strong><code>setInterval</code>：</strong></p>
+<ul>
+<li><code>setInterval</code>函数用于在一定时间间隔内重复执行指定的函数。</li>
+<li>语法：<code>setInterval(function, delay)</code></li>
+<li>第一个参数是要执行的函数，第二个参数是时间间隔的毫秒数。</li>
+<li>示例：<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="built_in">setInterval</span>(<span class="keyword">function</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&quot;Repeated log every 2000ms&quot;</span>);</span><br><span class="line">&#125;, <span class="number">2000</span>);</span><br></pre></td></tr></table></figure></div></li>
+</ul>
+</li>
+</ol>
+<p><strong><code>requestAnimationFrame</code>的使用：</strong><br><code>requestAnimationFrame</code>是用于在浏览器下一次重绘之前执行指定的函数，通常用于制作动画。</p>
+<ul>
+<li><code>requestAnimationFrame</code>会根据浏览器的绘制周期自动调用函数，通常与递归结合，创建平滑的动画效果。</li>
+<li>语法：<code>requestAnimationFrame(callback)</code></li>
+<li>示例：<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">animate</span>(<span class="params">timestamp</span>) &#123;</span><br><span class="line">  <span class="comment">// 执行动画逻辑</span></span><br><span class="line">  <span class="comment">// 在下一次重绘前调用自身</span></span><br><span class="line">  <span class="title function_">requestAnimationFrame</span>(animate);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="title function_">requestAnimationFrame</span>(animate);</span><br></pre></td></tr></table></figure></div></li>
+</ul>
+<p><strong>事件循环的机制：</strong><br>事件循环是JavaScript异步执行的基础。在浏览器环境中，JavaScript运行在单线程中，通过事件循环机制来处理异步任务，以避免阻塞主线程。</p>
+<p>事件循环的基本流程：</p>
+<ol>
+<li>从消息队列中获取任务，将其添加到调用栈（执行栈）中执行。</li>
+<li>如果调用栈为空，从消息队列中取下一个任务，执行之。</li>
+<li>重复步骤1和2，直至消息队列为空。</li>
+</ol>
+<p>事件循环机制保证了异步任务（如<code>setTimeout</code>、网络请求、事件处理等）能够按照顺序执行，避免了阻塞主线程。<code>setTimeout</code>和<code>setInterval</code>将任务放入消息队列，而<code>requestAnimationFrame</code>则在浏览器下一次绘制前调用函数，确保动画平滑执行。</p>
+</blockquote>
+<h4 id="性能优化"><a href="#性能优化" class="headerlink" title="性能优化"></a>性能优化</h4><p> 了解如何优化JavaScript性能，包括减少重绘回流、懒加载、代码分割等。</p>
+<blockquote>
+<p>优化JavaScript性能是确保网页快速加载和响应的关键。以下是一些优化技巧，包括减少重绘回流、懒加载、代码分割等：</p>
+<p><strong>1. 减少重绘和回流：</strong></p>
+<ul>
+<li>使用CSS Transitions 和 CSS Animations 来代替使用 JavaScript 实现的动画效果，因为 CSS 动画在绘制上更高效。</li>
+<li>避免频繁地修改DOM样式和布局属性，可以使用类名一次性修改多个属性。</li>
+<li>使用<code>transform</code>属性进行位移、旋转和缩放，因为它不会引起回流。</li>
+</ul>
+<p><strong>2. 懒加载（Lazy Loading）：</strong></p>
+<ul>
+<li>对于图片、视频等资源，使用懒加载技术来延迟加载这些内容，直到用户滚动到它们附近。</li>
+<li>使用<code>&lt;img&gt;</code>的<code>loading=&quot;lazy&quot;</code>属性来实现图片的懒加载。</li>
+</ul>
+<p><strong>3. 代码分割（Code Splitting）：</strong></p>
+<ul>
+<li>将应用拆分成多个模块或chunk，只加载当前页面所需的代码，从而加速初始加载时间。</li>
+<li>使用工具（如Webpack）来自动进行代码分割，确保按需加载模块。</li>
+</ul>
+<p><strong>4. 压缩和混淆：</strong></p>
+<ul>
+<li>压缩JavaScript、CSS和HTML文件，减少文件大小，加快加载速度。</li>
+<li>使用工具（如Terser）来进行JavaScript的代码混淆，减少不必要的代码和变量名。</li>
+</ul>
+<p><strong>5. 避免不必要的HTTP请求：</strong></p>
+<ul>
+<li>将多个小的文件合并成一个大文件，减少HTTP请求次数。</li>
+<li>使用CSS Sprites将多个小图标合并成一个图片，减少加载时间。</li>
+</ul>
+<p><strong>6. 缓存机制：</strong></p>
+<ul>
+<li>使用浏览器缓存，将资源缓存在用户本地，提高再次访问速度。</li>
+<li>设置适当的缓存头部，例如使用<code>Cache-Control</code>和<code>Expires</code>。</li>
+</ul>
+<p><strong>7. 使用Web Workers：</strong></p>
+<ul>
+<li>使用Web Workers在后台线程中处理一些耗时的任务，避免阻塞主线程，提升页面的响应性能。</li>
+</ul>
+<p><strong>8. 优化图片和媒体资源：</strong></p>
+<ul>
+<li>使用适当的图片格式，如JPEG、PNG、WebP，以及压缩工具来优化图片大小。</li>
+<li>对图片进行懒加载，仅在它们进入视口时加载。</li>
+</ul>
+<p><strong>9. 避免同步请求：</strong></p>
+<ul>
+<li>避免在主线程中执行耗时的同步请求，使用异步请求（如XMLHttpRequest、Fetch API）。</li>
+</ul>
+<p>综合使用这些优化技巧，可以显著提升网页的性能，使用户体验更加流畅。然而，需要根据具体的项目情况进行评估和优化。</p>
+</blockquote>
+<h3 id="防抖"><a href="#防抖" class="headerlink" title="防抖"></a>防抖</h3><p>例如实时监控用户输入的时候，为防止用户输入每个字符都要进行监控操作（发请求、校验等等），可以设置定时器使用户在输入完成之后再进行下一步操作，达到防抖效果，如下：</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">const</span> input = <span class="variable language_">document</span>.<span class="title function_">getElementById</span>(<span class="string">&#x27;input&#x27;</span>)</span><br><span class="line"></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">debounce</span>(<span class="params">fn, delay</span>) &#123;  <span class="comment">// 定义一个debounce函数，传入操作函数和延迟时间</span></span><br><span class="line">	<span class="keyword">let</span> timer = nul</span><br><span class="line">	<span class="keyword">return</span> <span class="keyword">function</span> (<span class="params"></span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (timer) <span class="built_in">clearTimeout</span>(timer)    <span class="comment">// 如果有定时器就重置</span></span><br><span class="line">		timer = <span class="built_in">setTimeout</span>(<span class="function">() =&gt;</span> &#123;</span><br><span class="line">			fn.<span class="title function_">apply</span>(<span class="variable language_">this</span>, <span class="variable language_">arguments</span>) <span class="comment">// apply 改变 this 指向，使调用者的this能够指向input</span></span><br><span class="line">		&#125;, delay)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	input.<span class="title function_">addEventListener</span>(   <span class="comment">// 设置一个input的事件监听</span></span><br><span class="line">	<span class="string">&#x27;input&#x27;</span>,</span><br><span class="line">	<span class="title function_">debounce</span>(<span class="keyword">function</span> (<span class="params">event</span>) &#123; <span class="comment">// 不使用箭头函数也是为了能够正确拿到this和event对象</span></span><br><span class="line">		<span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="variable language_">this</span>)</span><br><span class="line">		<span class="variable language_">console</span>.<span class="title function_">log</span>(event)</span><br><span class="line">		<span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&#x27;发送请求&#x27;</span>)</span><br><span class="line">	&#125;, <span class="number">500</span>)</span><br><span class="line">)</span><br></pre></td></tr></table></figure></div>
+
+
+
+<h3 id="节流"><a href="#节流" class="headerlink" title="节流"></a>节流</h3><div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">const</span> box = <span class="variable language_">document</span>.<span class="title function_">querySelector</span>(<span class="string">&#x27;.box&#x27;</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment">// 节流：一段时间内，只执行一次某个操作；过了这段时间，还有操作的话，继续执行新的</span></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">throttle</span>(<span class="params">fn, delay</span>) &#123;</span><br><span class="line">	<span class="keyword">let</span> timer = nu</span><br><span class="line">	<span class="keyword">return</span> <span class="keyword">function</span> (<span class="params"></span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (timer) <span class="keyword">return</span>		<span class="comment">// 如果timer还有的话，就不触发事件</span></span><br><span class="line">		timer = <span class="built_in">setTimeout</span>(<span class="function">() =&gt;</span> &#123;</span><br><span class="line">			fn.<span class="title function_">apply</span>(<span class="variable language_">this</span>, <span class="variable language_">arguments</span>)</span><br><span class="line">			timer = <span class="literal">null</span>	<span class="comment">// timer置空使delay过了之后又可以执行fn()</span></span><br><span class="line">		&#125;, delay)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">box.<span class="title function_">addEventListener</span>(</span><br><span class="line">	<span class="string">&#x27;drag&#x27;</span>,</span><br><span class="line">	<span class="title function_">throttle</span>(<span class="keyword">function</span> (<span class="params">event</span>) &#123;</span><br><span class="line">		<span class="comment">// console.log(event.offsetX, event.offsetY)</span></span><br><span class="line">		<span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&#x27;test&#x27;</span>)</span><br><span class="line">	&#125;, <span class="number">300</span>)</span><br><span class="line">)</span><br></pre></td></tr></table></figure></div>
+
+
+
+<h3 id="Promise"><a href="#Promise" class="headerlink" title="Promise"></a>Promise</h3><p>Promise是JavaScript中处理异步操作的一种机制，用于更优雅地管理异步代码和处理回调地狱（callback hell）问题。它提供了一种更结构化和可读性更高的方式来处理异步操作，以及在操作完成后获取结果或处理错误。</p>
+<p>Promise的基本概念如下：</p>
+<ul>
+<li><p><strong>Pending（进行中）：</strong> Promise对象的初始状态，表示异步操作尚未完成。</p>
+</li>
+<li><p><strong>Fulfilled（已完成）：</strong> 表示异步操作成功完成，此时会调用<code>then</code>方法中的回调函数，获取操作结果。</p>
+</li>
+<li><p><strong>Rejected（已拒绝）：</strong> 表示异步操作失败，此时会调用<code>catch</code>方法中的回调函数，处理错误。</p>
+</li>
+</ul>
+<p>Promise的基本用法示例：</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">const</span> myPromise = <span class="keyword">new</span> <span class="title class_">Promise</span>(<span class="function">(<span class="params">resolve, reject</span>) =&gt;</span> &#123;</span><br><span class="line">  <span class="comment">// 异步操作</span></span><br><span class="line">  <span class="keyword">if</span> (<span class="comment">/* 操作成功 */</span>) &#123;</span><br><span class="line">    <span class="title function_">resolve</span>(<span class="string">&quot;操作成功的结果&quot;</span>);</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="title function_">reject</span>(<span class="string">&quot;操作失败的原因&quot;</span>);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;);</span><br><span class="line"></span><br><span class="line">myPromise</span><br><span class="line">  .<span class="title function_">then</span>(<span class="function"><span class="params">result</span> =&gt;</span> &#123;</span><br><span class="line">    <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&quot;成功：&quot;</span> + result);</span><br><span class="line">  &#125;)</span><br><span class="line">  .<span class="title function_">catch</span>(<span class="function"><span class="params">error</span> =&gt;</span> &#123;</span><br><span class="line">    <span class="variable language_">console</span>.<span class="title function_">error</span>(<span class="string">&quot;失败：&quot;</span> + error);</span><br><span class="line">  &#125;);</span><br></pre></td></tr></table></figure></div>
+
+<p>Promise的原理可以简要概括如下：</p>
+<ol>
+<li><p><strong>Promise的构造：</strong> 创建一个Promise对象时，会传入一个执行器函数，这个函数接受两个参数：<code>resolve</code>和<code>reject</code>。在异步操作完成时，调用<code>resolve</code>表示操作成功，调用<code>reject</code>表示操作失败。</p>
+</li>
+<li><p><strong>状态的改变：</strong> 在执行器函数中，调用<code>resolve</code>或<code>reject</code>会改变Promise的状态，从Pending变为Fulfilled或Rejected。</p>
+</li>
+<li><p><strong>then和catch方法：</strong> Promise提供了<code>then</code>和<code>catch</code>方法来处理操作成功和操作失败的情况。<code>then</code>方法接受一个成功回调函数，<code>catch</code>方法接受一个失败回调函数。</p>
+</li>
+<li><p><strong>链式调用：</strong> 通过返回新的Promise，可以实现链式调用。这使得可以在不同的步骤中串联处理多个异步操作。</p>
+</li>
+<li><p><strong>解决回调地狱：</strong> 使用Promise可以更清晰地组织异步代码，避免多层嵌套的回调函数，提高了代码的可读性和维护性。</p>
+</li>
+</ol>
+<p>需要注意的是，虽然Promise可以解决回调地狱问题，但在复杂的异步场景下，仍然可能导致代码难以理解。为了进一步简化异步代码，ES6引入了<code>async/await</code>语法，可以更直观地编写异步代码，基于Promise实现。</p>
+<h3 id="闭包"><a href="#闭包" class="headerlink" title="闭包"></a>闭包</h3><p>闭包是JavaScript中的一个重要概念，它涉及作用域和函数的关系，通常用来描述函数内部可以访问外部作用域的情况。一个闭包是由函数以及声明在该函数内部的所有变量组成的，这些变量可以继续在函数执行完毕后被访问。</p>
+<p>简单地说，闭包就是一个函数，它可以访问它被创建时所处的词法作用域中的变量，即使这个函数在不同的作用域中被调用。闭包在处理一些高级的编程模式和异步编程时非常有用。</p>
+<p>以下是闭包的一些关键特点：</p>
+<ol>
+<li><p><strong>函数嵌套：</strong> 闭包通常是由一个函数内部定义另一个函数所创建的。内部函数可以访问外部函数中的变量和参数，即使外部函数已经执行完毕。</p>
+</li>
+<li><p><strong>变量的引用：</strong> 内部函数持有外部函数作用域的引用，使得外部函数中的变量不会被垃圾回收，直到内部函数不再被引用为止。</p>
+</li>
+<li><p><strong>保护状态：</strong> 闭包可以被用于保护变量状态，防止外部访问或修改，实现了数据的私有性。</p>
+</li>
+<li><p><strong>实现数据封装：</strong> 闭包可以将变量封装在函数内部，只暴露特定的接口来访问和操作变量，实现了信息隐藏。</p>
+</li>
+<li><p><strong>异步编程：</strong> 在异步编程中，闭包可以解决回调函数无法访问正确作用域的问题。例如，在事件处理函数中使用闭包来访问外部函数的变量。</p>
+</li>
+</ol>
+<p>以下是一个简单的闭包示例：</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">outerFunction</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="keyword">var</span> outerVar = <span class="string">&quot;I&#x27;m outside!&quot;</span>;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">function</span> <span class="title function_">innerFunction</span>(<span class="params"></span>) &#123;</span><br><span class="line">    <span class="variable language_">console</span>.<span class="title function_">log</span>(outerVar); <span class="comment">// 内部函数可以访问外部函数的变量</span></span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> innerFunction;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> closure = <span class="title function_">outerFunction</span>(); <span class="comment">// 返回内部函数，形成闭包</span></span><br><span class="line"><span class="title function_">closure</span>(); <span class="comment">// 调用内部函数，输出 &quot;I&#x27;m outside!&quot;</span></span><br></pre></td></tr></table></figure></div>
+
+<p>需要注意的是，虽然闭包非常有用，但过多地使用闭包可能导致内存占用和性能问题。因为闭包会持有外部作用域的引用，当闭包在不再需要的时候，需要手动解除引用，以便垃圾回收可以释放内存。在使用闭包时，需要权衡性能和内存消耗。</p>
+<h3 id="作用域和作用域链"><a href="#作用域和作用域链" class="headerlink" title="作用域和作用域链"></a>作用域和作用域链</h3><p>作用域（Scope）是指变量和函数在代码中的可访问范围。在JavaScript中，作用域决定了哪些变量和函数可以在哪里被访问，以及它们是否可见。JavaScript采用词法作用域（也称为静态作用域），意味着作用域在代码编写时就确定了，而不是在运行时确定。</p>
+<p>作用域链（Scope Chain）是指由嵌套的函数作用域所构成的一条链，它决定了一个变量在哪个作用域中被查找和访问。作用域链的顶端是当前函数的作用域，然后逐级往上查找，直到全局作用域为止。</p>
+<p>以下是一些关键概念和解释：</p>
+<ol>
+<li><p><strong>全局作用域：</strong> 在最外层定义的变量和函数具有全局作用域，可以在任何地方访问。</p>
+</li>
+<li><p><strong>函数作用域：</strong> 函数内部定义的变量和函数具有函数作用域，只能在该函数内部访问。</p>
+</li>
+<li><p><strong>块级作用域：</strong> 由ES6引入，用于控制if语句、循环等块中定义的变量的作用范围。</p>
+</li>
+<li><p><strong>作用域链的建立：</strong> 当访问一个变量时，JavaScript引擎首先在当前作用域中查找，如果找不到则继续向上一级作用域查找，直到全局作用域。</p>
+</li>
+<li><p><strong>闭包中的作用域链：</strong> 在一个函数内部定义的函数可以访问外部函数的作用域，形成了闭包。这就是闭包的作用域链。</p>
+</li>
+<li><p><strong>变量提升：</strong> 在一个作用域中，变量声明会被提升到作用域的顶部，但赋值不会。这意味着你可以在声明前使用变量，但它的值将是<code>undefined</code>。</p>
+</li>
+</ol>
+<p>以下是一个简单的作用域和作用域链示例：</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="keyword">var</span> globalVar = <span class="string">&quot;Global&quot;</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">outer</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="keyword">var</span> outerVar = <span class="string">&quot;Outer&quot;</span>;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">function</span> <span class="title function_">inner</span>(<span class="params"></span>) &#123;</span><br><span class="line">    <span class="keyword">var</span> innerVar = <span class="string">&quot;Inner&quot;</span>;</span><br><span class="line">    <span class="variable language_">console</span>.<span class="title function_">log</span>(innerVar); <span class="comment">// 在内部函数中访问内部变量</span></span><br><span class="line">    <span class="variable language_">console</span>.<span class="title function_">log</span>(outerVar); <span class="comment">// 在内部函数中访问外部函数作用域的变量</span></span><br><span class="line">    <span class="variable language_">console</span>.<span class="title function_">log</span>(globalVar); <span class="comment">// 在内部函数中访问全局变量</span></span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="title function_">inner</span>();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="title function_">outer</span>();</span><br></pre></td></tr></table></figure></div>
+
+<p>理解作用域和作用域链是理解JavaScript中变量访问和作用域限制的关键。它对于理解闭包、函数嵌套以及变量的可见性和生命周期等概念非常重要。</p>
+<h3 id="原型和原型链"><a href="#原型和原型链" class="headerlink" title="原型和原型链"></a>原型和原型链</h3><p><strong>原型（Prototype）：</strong><br>在JavaScript中，每个对象都有一个原型，它是一个对象，用于存储共享的属性和方法。当你访问一个对象的属性或方法时，如果对象本身没有这个属性或方法，JavaScript会沿着原型链查找，找到原型对象上的对应属性或方法。原型是一个对象与对象之间的关系，它通过引用连接在一起。</p>
+<p><strong>原型链（Prototype Chain）：</strong><br>原型链是由一系列的原型对象组成的链式结构，用于属性和方法的查找。当访问一个对象的属性或方法时，JavaScript引擎会首先在对象自身查找，如果找不到，则沿着原型链向上一级的原型对象查找，直到找到属性或方法或者到达原型链的顶端（<code>Object.prototype</code>）。</p>
+<p>以下是原型和原型链的一些关键点：</p>
+<ol>
+<li><p><strong>原型对象的创建：</strong> 在JavaScript中，每个函数都有一个<code>prototype</code>属性，指向一个原型对象。这个原型对象可以包含共享的属性和方法。</p>
+</li>
+<li><p><strong>实例对象和原型的关系：</strong> 当通过一个构造函数创建对象实例时，实例会继承构造函数的原型对象上的属性和方法。这使得对象实例可以共享相同的属性和方法。</p>
+</li>
+<li><p><strong>原型链的构建：</strong> 当访问一个对象的属性或方法时，JavaScript引擎会先在对象自身查找，如果找不到，它会向上一级的原型对象查找，依此类推，直到找到或到达原型链的顶端。</p>
+</li>
+<li><p><strong>Object.prototype：</strong> 原型链的顶端是<code>Object.prototype</code>，它是所有对象的原型。它包含JavaScript内置的一些方法，如<code>toString</code>、<code>hasOwnProperty</code>等。</p>
+</li>
+<li><p><strong>属性查找顺序：</strong> 原型链的属性查找是从下到上的，即先在对象自身查找，然后再在原型对象上查找，以此类推。</p>
+</li>
+</ol>
+<p>以下是一个简单的原型和原型链示例：</p>
+<div class="highlight-container" data-rel="Javascript"><figure class="iseeu highlight javascript"><table><tr><td class="code"><pre><span class="line"><span class="comment">// 构造函数</span></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">Person</span>(<span class="params">name</span>) &#123;</span><br><span class="line">  <span class="variable language_">this</span>.<span class="property">name</span> = name;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 添加原型方法</span></span><br><span class="line"><span class="title class_">Person</span>.<span class="property"><span class="keyword">prototype</span></span>.<span class="property">sayHello</span> = <span class="keyword">function</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(<span class="string">&quot;Hello, I&#x27;m &quot;</span> + <span class="variable language_">this</span>.<span class="property">name</span>);</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 创建实例</span></span><br><span class="line"><span class="keyword">var</span> person1 = <span class="keyword">new</span> <span class="title class_">Person</span>(<span class="string">&quot;Alice&quot;</span>);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 调用实例方法</span></span><br><span class="line">person1.<span class="title function_">sayHello</span>(); <span class="comment">// 输出 &quot;Hello, I&#x27;m Alice&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 查找属性和方法</span></span><br><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(person1.<span class="property">name</span>); <span class="comment">// 从实例中查找 &quot;name&quot;</span></span><br><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(person1.<span class="property">sayHello</span>); <span class="comment">// 从原型对象中查找 &quot;sayHello&quot;</span></span><br></pre></td></tr></table></figure></div>
+
+<p>理解原型和原型链是理解JavaScript中对象继承的基础。它对于理解构造函数、继承模式以及面向对象编程在JavaScript中的实现方式非常重要。</p>
+<h3 id="ES5"><a href="#ES5" class="headerlink" title="ES5"></a>ES5</h3><p>在面试中，ES5（ECMAScript 5）和ES6（ECMAScript 2015，也称为ES2015或ES6）都是常见的考点，因为它们是JavaScript语言中的两个重要版本，带来了许多新的语法、特性和改进。以下是在面试中可能涉及到的一些ES5和ES6的考点：</p>
+<p><strong>ES5 考点：</strong></p>
+<ol>
+<li><p><strong>变量声明：</strong> 包括使用<code>var</code>、<code>let</code>、<code>const</code>进行变量声明的区别、作用域等。</p>
+</li>
+<li><p><strong>函数：</strong> 包括函数声明和函数表达式的区别、函数作用域、闭包、<code>arguments</code>对象等。</p>
+</li>
+<li><p><strong>作用域和闭包：</strong> 解释作用域链、闭包的概念和原理，以及如何避免闭包引发的内存泄漏。</p>
+</li>
+<li><p><strong>原型和原型链：</strong> 解释原型、原型链的概念，以及如何实现继承。</p>
+</li>
+<li><p><strong>同步和异步：</strong> 解释回调函数、事件循环、异步编程等。</p>
+</li>
+<li><p><strong>事件处理：</strong> 解释事件冒泡和事件捕获机制，以及如何添加和移除事件监听器。</p>
+</li>
+</ol>
+<p><strong>ES6 考点：</strong></p>
+<ol>
+<li><p><strong>let 和 const：</strong> 解释<code>let</code>和<code>const</code>关键字，以及它们与<code>var</code>的区别，包括块级作用域等。</p>
+</li>
+<li><p><strong>箭头函数：</strong> 解释箭头函数的特性，以及它与普通函数的区别。</p>
+</li>
+<li><p><strong>模板字符串：</strong> 解释模板字符串的语法和用法，包括插值、多行字符串等。</p>
+</li>
+<li><p><strong>解构赋值：</strong> 解释解构赋值的概念和用法，包括数组和对象的解构。</p>
+</li>
+<li><p><strong>展开运算符：</strong> 解释展开运算符的用法，包括在数组、对象和函数调用中的应用。</p>
+</li>
+<li><p><strong>类和继承：</strong> 解释ES6中的类和继承，以及与ES5原型继承的区别。</p>
+</li>
+<li><p><strong>Promise 和异步编程：</strong> 解释Promise的概念、用法，以及如何处理异步编程。</p>
+</li>
+<li><p><strong>生成器和迭代器：</strong> 解释生成器函数和迭代器的概念，以及它们在异步编程中的应用。</p>
+</li>
+<li><p><strong>模块化：</strong> 解释ES6模块的语法和用法，包括导入和导出等。</p>
+</li>
+<li><p><strong>新的数据结构：</strong> 解释Set、Map、WeakSet、WeakMap等新的数据结构和用法。</p>
+</li>
+</ol>
+<p>在面试中，了解这些ES5和ES6的知识点，以及它们的语法、特性和用法，会帮助你更好地回答相关问题，展现你的JavaScript编程能力。</p>
+]]></content>
+      <categories>
+        <category>笔记</category>
+        <category>前端</category>
+      </categories>
+      <tags>
+        <tag>笔记</tag>
+        <tag>前端</tag>
+      </tags>
+  </entry>
 </search>
